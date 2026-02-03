@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --text: #0f0f0f;
+  --text-muted: #737373;
+  --border: #e5e5e5;
+  --accent: #5e6ad2;
+}
+
+.dark {
+  --bg: #0d0d0d;
+  --surface: #171717;
+  --text: #fafafa;
+  --text-muted: #a3a3a3;
+  --border: #262626;
+  --accent: #818cf8;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-bg text-text;
+  }
+}

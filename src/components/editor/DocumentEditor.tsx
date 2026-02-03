@@ -1,0 +1,486 @@
+"use client";
+
+import { useEditor, EditorContent } from "@tiptap/react";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
+import StarterKit from "@tiptap/starter-kit";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Y from "yjs";
+import { marked } from "marked";
+import TurndownService from "turndown";
+import { trpc } from "@/trpc/client";
+
+const PARTYKIT_URL = typeof process.env.NEXT_PUBLIC_PARTYKIT_URL === "string" ? process.env.NEXT_PUBLIC_PARTYKIT_URL : undefined;
+
+function colorFromUserId(userId: string): string {
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h << 5) - h + userId.charCodeAt(i);
+  const hue = Math.abs(h % 360);
+  return `hsl(${hue}, 65%, 50%)`;
+}
+
+const DEBOUNCE_MS = 1500;
+const EDITOR_PREFERENCE_KEY = "markflow-editor-preference";
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  if (typeof Buffer !== "undefined") {
+    return new Uint8Array(Buffer.from(base64, "base64"));
+  }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+const turndown = new TurndownService({ headingStyle: "atx" });
+
+type EditorMode = "wysiwyg" | "markdown" | "split";
+
+export function DocumentEditor({
+  documentId,
+  initialYjsBase64,
+  initialMd,
+  templateSlug,
+}: {
+  documentId: string;
+  initialYjsBase64: string | null;
+  initialMd: string | null;
+  templateSlug?: string | null;
+}) {
+  const utils = trpc.useUtils();
+  const { data: me } = trpc.user.me.useQuery();
+  const updateProfile = trpc.user.updateProfile.useMutation({
+    onSuccess: () => utils.user.me.invalidate(),
+  });
+
+  const [mode, setModeState] = useState<EditorMode>(() => {
+    if (typeof window === "undefined") return "wysiwyg";
+    const stored = localStorage.getItem(EDITOR_PREFERENCE_KEY) as EditorMode | null;
+    if (stored && ["wysiwyg", "markdown", "split"].includes(stored)) return stored;
+    return (me?.profile?.editor_preference as EditorMode) ?? "wysiwyg";
+  });
+  const [markdownValue, setMarkdownValue] = useState("");
+  const [markdownDirty, setMarkdownDirty] = useState(false);
+  const markdownSyncFromEditorRef = useRef(true);
+
+  const setMode = useCallback(
+    (next: EditorMode) => {
+      setModeState(next);
+      localStorage.setItem(EDITOR_PREFERENCE_KEY, next);
+      updateProfile.mutate({ editor_preference: next });
+    },
+    [updateProfile]
+  );
+
+  const hasInitialContent = Boolean(
+    (typeof initialYjsBase64 === "string" && initialYjsBase64) || (typeof initialMd === "string" && initialMd?.trim())
+  );
+
+  const templateContent = trpc.template.getContent.useQuery(
+    { slug: templateSlug! },
+    { enabled: !hasInitialContent && !!templateSlug }
+  );
+
+  const ydoc = useMemo(() => {
+    const doc = new Y.Doc();
+    if (typeof initialYjsBase64 === "string" && initialYjsBase64) {
+      try {
+        Y.applyUpdate(doc, base64ToUint8Array(initialYjsBase64));
+      } catch {
+        // ignore invalid state
+      }
+    }
+    return doc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply initial state once per documentId
+  }, [documentId]);
+
+  const fragment = useMemo(() => ydoc.getXmlFragment("default"), [ydoc]);
+
+  const [partyProvider, setPartyProvider] = useState<InstanceType<typeof import("y-partykit/provider").default> | null>(null);
+  const partyProviderRef = useRef<InstanceType<typeof import("y-partykit/provider").default> | null>(null);
+  useEffect(() => {
+    if (!PARTYKIT_URL || !documentId) {
+      setPartyProvider(null);
+      partyProviderRef.current = null;
+      return undefined;
+    }
+    let mounted = true;
+    import("y-partykit/provider").then(({ default: YPartyKitProvider }) => {
+      const p = new YPartyKitProvider(PARTYKIT_URL!, documentId, ydoc, { connect: true });
+      partyProviderRef.current = p;
+      if (mounted) setPartyProvider(p);
+    });
+    return () => {
+      mounted = false;
+      const p = partyProviderRef.current;
+      partyProviderRef.current = null;
+      if (p) p.destroy();
+    };
+  }, [documentId, ydoc]);
+
+  const editorReady = !PARTYKIT_URL || partyProvider !== null;
+
+  if (!editorReady) {
+    return (
+      <div className="rounded border border-border bg-surface flex items-center justify-center min-h-[200px]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
+      </div>
+    );
+  }
+
+  return (
+    <DocumentEditorBody
+      documentId={documentId}
+      ydoc={ydoc}
+      fragment={fragment}
+      partyProvider={partyProvider}
+      me={me}
+      hasInitialContent={hasInitialContent}
+      initialMd={initialMd}
+      initialYjsBase64={initialYjsBase64}
+      templateSlug={templateSlug}
+      templateContent={templateContent.data}
+      setMode={setMode}
+      mode={mode}
+      markdownValue={markdownValue}
+      setMarkdownValue={setMarkdownValue}
+      markdownDirty={markdownDirty}
+      setMarkdownDirty={setMarkdownDirty}
+      markdownSyncFromEditorRef={markdownSyncFromEditorRef}
+      updateProfile={updateProfile}
+    />
+  );
+}
+
+function DocumentEditorBody({
+  documentId,
+  ydoc,
+  fragment,
+  partyProvider,
+  me,
+  hasInitialContent,
+  initialMd,
+  initialYjsBase64,
+  templateSlug,
+  templateContent,
+  setMode,
+  mode,
+  markdownValue,
+  setMarkdownValue,
+  markdownDirty,
+  setMarkdownDirty,
+  markdownSyncFromEditorRef,
+  updateProfile,
+}: {
+  documentId: string;
+  ydoc: Y.Doc;
+  fragment: Y.XmlFragment;
+  partyProvider: InstanceType<typeof import("y-partykit/provider").default> | null;
+  me: { user: { id: string; email?: string }; profile?: { full_name?: string } | null } | undefined;
+  hasInitialContent: boolean;
+  initialMd: string | null;
+  initialYjsBase64: string | null;
+  templateSlug?: string | null;
+  templateContent: string | undefined;
+  setMode: (m: EditorMode) => void;
+  mode: EditorMode;
+  markdownValue: string;
+  setMarkdownValue: React.Dispatch<React.SetStateAction<string>>;
+  markdownDirty: boolean;
+  setMarkdownDirty: React.Dispatch<React.SetStateAction<boolean>>;
+  markdownSyncFromEditorRef: React.MutableRefObject<boolean>;
+  updateProfile: ReturnType<typeof trpc.user.updateProfile.useMutation>;
+}) {
+  const collaborationUser = useMemo(
+    () =>
+      me?.user
+        ? {
+            name: (me.profile?.full_name ?? me.user.email ?? "User") as string,
+            color: colorFromUserId(me.user.id),
+          }
+        : { name: "User", color: "#6b7280" },
+    [me]
+  );
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ history: false }),
+      Collaboration.configure({ fragment }),
+      ...(partyProvider
+        ? [
+            CollaborationCursor.configure({
+              provider: partyProvider,
+              user: collaborationUser,
+            }),
+          ]
+        : []),
+    ],
+    content: null,
+    editorProps: {
+      attributes: {
+        class:
+          "prose prose-sm max-w-none min-h-[200px] px-4 py-3 focus:outline-none text-text",
+      },
+    },
+  });
+
+  const updateContent = trpc.document.updateContent.useMutation();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedRef = useRef<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  const persist = useCallback(() => {
+    if (!editor || !documentId) return;
+    const state = Y.encodeStateAsUpdate(ydoc);
+    const yjsBase64 =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(state).toString("base64")
+        : btoa(String.fromCharCode(...state));
+    if (yjsBase64 === lastSavedRef.current) return;
+    const html = editor.getHTML() ?? "";
+    updateContent.mutate(
+      { documentId, contentYjs: yjsBase64, contentMd: html },
+      {
+        onSuccess: () => {
+          lastSavedRef.current = yjsBase64;
+          setDirty(false);
+        },
+      }
+    );
+  }, [documentId, editor, ydoc, updateContent]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const onUpdate = () => {
+      setDirty(true);
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(persist, DEBOUNCE_MS);
+    };
+    editor.on("update", onUpdate);
+    return () => {
+      editor.off("update", onUpdate);
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [editor, persist]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
+
+  const initialMdApplied = useRef(false);
+  useEffect(() => {
+    if (!editor || initialMdApplied.current) return;
+    if (hasInitialContent && initialMd && !initialYjsBase64) {
+      try {
+        const html = marked(initialMd) as string;
+        editor.commands.setContent(html, false);
+        initialMdApplied.current = true;
+      } catch {
+        initialMdApplied.current = true;
+      }
+      return;
+    }
+    if (!hasInitialContent && templateSlug && templateContent) {
+      try {
+        const html = marked(templateContent) as string;
+        editor.commands.setContent(html, false);
+        initialMdApplied.current = true;
+      } catch {
+        initialMdApplied.current = true;
+      }
+    }
+  }, [editor, hasInitialContent, initialMd, initialYjsBase64, templateSlug, templateContent]);
+
+  useEffect(() => {
+    if (!editor || mode === "wysiwyg") return;
+    if (markdownSyncFromEditorRef.current) {
+      try {
+        setMarkdownValue(turndown.turndown(editor.getHTML() ?? ""));
+        setMarkdownDirty(false);
+      } catch {
+        setMarkdownValue("");
+      }
+    }
+    markdownSyncFromEditorRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ref and setters are stable
+  }, [editor, mode]);
+
+  const applyMarkdownToEditor = useCallback(
+    (md: string) => {
+      if (!editor) return;
+      try {
+        const html = marked(md) as string;
+        markdownSyncFromEditorRef.current = false;
+        editor.commands.setContent(html, false);
+        setDirty(true);
+        persist();
+      } catch {
+        // ignore
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- markdownSyncFromEditorRef is ref
+    [editor, persist]
+  );
+
+  const handleMarkdownChange = (value: string) => {
+    setMarkdownValue(value);
+    setMarkdownDirty(true);
+  };
+
+  const handleMarkdownBlur = () => {
+    if (markdownDirty) {
+      applyMarkdownToEditor(markdownValue);
+      setMarkdownDirty(false);
+    }
+  };
+
+  if (!editor) return null;
+
+  const statusText = updateContent.isPending ? "Saving…" : dirty ? "Unsaved" : "Saved";
+
+  return (
+    <div className="rounded border border-border bg-surface flex flex-col">
+      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 flex-wrap">
+        <EditorToolbar editor={editor} />
+        <div className="ml-auto flex items-center gap-1 border-l border-border pl-2">
+          {(["wysiwyg", "markdown", "split"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`rounded px-2 py-1 text-xs font-medium capitalize ${
+                mode === m
+                  ? "bg-accent text-white"
+                  : "text-text-muted hover:bg-bg hover:text-text"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-1 min-h-0">
+        {(mode === "wysiwyg" || mode === "split") && (
+          <div className={mode === "split" ? "w-1/2 border-r border-border min-w-0" : "flex-1 min-w-0"}>
+            <EditorContent editor={editor} />
+          </div>
+        )}
+        {(mode === "markdown" || mode === "split") && (
+          <div className={mode === "split" ? "w-1/2 min-w-0 flex flex-col" : "flex-1 min-w-0 flex flex-col"}>
+            <textarea
+              className="flex-1 w-full min-h-[200px] px-4 py-3 text-sm font-mono text-text bg-bg border-0 focus:outline-none focus:ring-0 resize-none"
+              value={markdownValue}
+              onChange={(e) => handleMarkdownChange(e.target.value)}
+              onBlur={handleMarkdownBlur}
+              placeholder="Markdown…"
+              spellCheck={false}
+            />
+          </div>
+        )}
+      </div>
+      <div className="border-t border-border px-4 py-1.5 text-xs text-text-muted">
+        {statusText}
+      </div>
+    </div>
+  );
+}
+
+function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+  if (!editor) return null;
+  return (
+    <div className="flex items-center gap-0.5 flex-wrap">
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        active={editor.isActive("bold")}
+        title="Bold"
+      >
+        <strong>B</strong>
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        active={editor.isActive("italic")}
+        title="Italic"
+      >
+        <em>I</em>
+      </ToolbarButton>
+      <span className="w-px h-4 bg-border mx-0.5" aria-hidden />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        active={editor.isActive("heading", { level: 1 })}
+        title="Heading 1"
+      >
+        H1
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        active={editor.isActive("heading", { level: 2 })}
+        title="Heading 2"
+      >
+        H2
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        active={editor.isActive("heading", { level: 3 })}
+        title="Heading 3"
+      >
+        H3
+      </ToolbarButton>
+      <span className="w-px h-4 bg-border mx-0.5" aria-hidden />
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        active={editor.isActive("bulletList")}
+        title="Bullet list"
+      >
+        •
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        active={editor.isActive("orderedList")}
+        title="Numbered list"
+      >
+        1.
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        active={editor.isActive("blockquote")}
+        title="Quote"
+      >
+        “
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        active={editor.isActive("codeBlock")}
+        title="Code block"
+      >
+        {"</>"}
+      </ToolbarButton>
+    </div>
+  );
+}
+
+function ToolbarButton({
+  onClick,
+  active,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  active: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`rounded p-1.5 text-sm ${
+        active ? "bg-accent text-white" : "text-text-muted hover:bg-bg hover:text-text"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}

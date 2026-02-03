@@ -1,0 +1,3 @@
+-- MarkFlow: Initial migration
+-- Uses gen_random_uuid() (built-in in PostgreSQL 13+) for UUID primary keys.
+-- No extension required.
