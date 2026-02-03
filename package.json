@@ -18,6 +18,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^4.36.1",
     "@tiptap/extension-code-block-lowlight": "^2.27.2",
     "@tiptap/extension-collaboration": "^2.27.2",
@@ -41,6 +42,10 @@
     "next": "14.2.18",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-slug": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-toc": "^9.0.0",
     "turndown": "^7.2.2",
     "turndown-plugin-gfm": "^1.0.2",
     "y-partykit": "^0.0.33",

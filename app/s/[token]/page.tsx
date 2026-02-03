@@ -1,17 +1,126 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { marked } from "marked";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkToc from "remark-toc";
+import rehypeSlug from "rehype-slug";
+import type { Components } from "react-markdown";
 
-marked.setOptions({ gfm: true });
+/** Merge class names; rehype-slug adds ids */
+function cn(...classes: (string | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
+}
+
+/** Heading components: explicit size/weight so headings always stand out; scroll-margin for TOC */
+const markdownComponents: Components = {
+  h1: (props) => <h1 {...props} className={cn(props.className, "scroll-mt-4 mt-6 mb-3 text-2xl font-bold text-text")} />,
+  h2: (props) => <h2 {...props} className={cn(props.className, "scroll-mt-4 mt-6 mb-3 text-xl font-semibold text-text")} />,
+  h3: (props) => <h3 {...props} className={cn(props.className, "scroll-mt-4 mt-4 mb-2 text-lg font-semibold text-text")} />,
+  h4: (props) => <h4 {...props} className={cn(props.className, "scroll-mt-4 mt-4 mb-2 text-base font-semibold text-text")} />,
+  h5: (props) => <h5 {...props} className={cn(props.className, "scroll-mt-4 mt-3 mb-1.5 text-sm font-semibold text-text")} />,
+  h6: (props) => <h6 {...props} className={cn(props.className, "scroll-mt-4 mt-3 mb-1.5 text-sm font-semibold text-text-muted")} />,
+  a: ({ href, title, children, className, ...props }) => {
+    const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
+    const isAnchor = href?.startsWith("#");
+    const linkClass = cn(
+      className,
+      "transition-colors",
+      isAnchor ? "text-accent hover:underline cursor-pointer" : undefined,
+      isExternal ? "text-accent no-underline hover:underline" : undefined
+    );
+    return (
+      <a
+        href={href}
+        title={title ?? undefined}
+        target={isExternal ? "_blank" : undefined}
+        rel={isExternal ? "noopener noreferrer" : undefined}
+        className={linkClass}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
+};
 
 type ShareFile = { id: string; name: string; path?: string; content_md: string };
 type ShareDoc =
   | { type: "file"; id: string; name: string; content_md: string }
   | { type: "folder"; id: string; name: string; children: ShareFile[] }
   | { type: "project"; id: string; name: string; children: ShareFile[] };
+
+/** Renders content: legacy HTML (starts with <) as raw HTML; otherwise as markdown via react-markdown */
+function MarkdownContent({ content, className }: { content: string; className?: string }) {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("<")) {
+    return <div className={className} dangerouslySetInnerHTML={{ __html: trimmed }} />;
+  }
+  return (
+    <div className={className}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkToc]}
+        rehypePlugins={[rehypeSlug]}
+        components={markdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+type ShareTreeNode =
+  | { type: "folder"; name: string; children: ShareTreeNode[] }
+  | { type: "file"; file: ShareFile };
+
+/** Build folder tree from flat file list using path (e.g. "compliance/landscape.md" -> folder compliance, file landscape.md) */
+function buildShareTree(files: ShareFile[]): ShareTreeNode[] {
+  const root: { folders: Map<string, { folders: Map<string, unknown>; files: ShareFile[] }>; files: ShareFile[] } = {
+    folders: new Map(),
+    files: [],
+  };
+  for (const file of files) {
+    const pathStr = file.path ?? file.name;
+    const segments = pathStr.split("/").filter(Boolean);
+    if (segments.length <= 1) {
+      root.files.push(file);
+      continue;
+    }
+    const fileSegment = segments[segments.length - 1];
+    const folderSegments = segments.slice(0, -1);
+    let current: { folders: Map<string, { folders: Map<string, unknown>; files: ShareFile[] }>; files: ShareFile[] } = root;
+    for (const seg of folderSegments) {
+      if (!current.folders.has(seg)) {
+        current.folders.set(seg, { folders: new Map(), files: [] });
+      }
+      current = current.folders.get(seg) as typeof root;
+    }
+    current.files.push({ ...file, name: fileSegment });
+  }
+  function toNodes(
+    folders: Map<string, { folders: Map<string, unknown>; files: ShareFile[] }>,
+    files: ShareFile[]
+  ): ShareTreeNode[] {
+    const nodes: ShareTreeNode[] = [];
+    const folderNames = Array.from(folders.keys()).sort();
+    for (const name of folderNames) {
+      const child = folders.get(name)!;
+      nodes.push({
+        type: "folder",
+        name,
+        children: toNodes(child.folders as Map<string, { folders: Map<string, unknown>; files: ShareFile[] }>, child.files),
+      });
+    }
+    const fileList = [...files].sort((a, b) => a.name.localeCompare(b.name));
+    for (const file of fileList) {
+      nodes.push({ type: "file", file });
+    }
+    return nodes;
+  }
+  return toNodes(root.folders, root.files);
+}
 
 export default function SharePage() {
   const params = useParams();
@@ -58,6 +167,13 @@ export default function SharePage() {
     void fetchDoc();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run on token change only
   }, [token]);
+
+  const isFolderOrProject =
+    doc?.type === "folder" || doc?.type === "project";
+  const tree = useMemo(
+    () => (doc && isFolderOrProject ? buildShareTree(doc.children ?? []) : []),
+    [isFolderOrProject, doc]
+  );
 
   if (!token) {
     return (
@@ -128,14 +244,49 @@ export default function SharePage() {
     );
   }
 
-  const proseClass =
-    "prose prose-sm max-w-none text-text prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2";
+  const proseClass = "share-markdown prose prose-sm max-w-none text-text prose-p:my-2 prose-p:leading-relaxed prose-ul:my-3 prose-ol:my-3 prose-li:my-0.5 prose-strong:font-semibold prose-strong:text-text";
 
-  const isFolderOrProject = doc.type === "folder" || doc.type === "project";
   if (isFolderOrProject) {
     const files = doc.children;
     const selectedFile =
       files.find((f) => f.id === selectedFileId) ?? files[0] ?? null;
+
+    function renderTreeNodes(nodes: ShareTreeNode[], depth: number) {
+      return nodes.map((node) => {
+        if (node.type === "folder") {
+          return (
+            <li key={`folder-${depth}-${node.name}`} className="list-none">
+              <div
+                className="px-3 py-1.5 text-xs font-medium text-text-muted truncate"
+                style={{ paddingLeft: 12 + depth * 12 }}
+              >
+                {node.name}
+              </div>
+              <ul className="space-y-0.5">
+                {renderTreeNodes(node.children, depth + 1)}
+              </ul>
+            </li>
+          );
+        }
+        const { file } = node;
+        return (
+          <li key={file.id}>
+            <button
+              type="button"
+              onClick={() => setSelectedFileId(file.id)}
+              className={`w-full text-left py-2 text-sm rounded-md truncate transition-colors ${
+                selectedFileId === file.id
+                  ? "bg-accent/15 text-accent font-medium"
+                  : "text-text hover:bg-bg"
+              }`}
+              style={{ paddingLeft: 12 + depth * 12 }}
+            >
+              {file.name}
+            </button>
+          </li>
+        );
+      });
+    }
 
     return (
       <div className="min-h-screen bg-bg text-text flex flex-col">
@@ -161,36 +312,17 @@ export default function SharePage() {
                   {doc.type === "project" ? "No files" : "No files in folder"}
                 </p>
               ) : (
-                <ul className="space-y-0.5">
-                  {files.map((file) => (
-                    <li key={file.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedFileId(file.id)}
-                        className={`w-full text-left px-3 py-2 text-sm rounded-md truncate transition-colors ${
-                          selectedFileId === file.id
-                            ? "bg-accent/15 text-accent font-medium"
-                            : "text-text hover:bg-bg"
-                        }`}
-                      >
-                        {file.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <ul className="space-y-0.5">{renderTreeNodes(tree, 0)}</ul>
               )}
             </nav>
           </aside>
           <main className="flex-1 min-w-0 overflow-auto">
             {selectedFile ? (
               <div className="max-w-3xl mx-auto px-6 py-6">
-                <h2 className="text-lg font-semibold text-text mb-4">{selectedFile.name}</h2>
-                <div
-                  className={proseClass}
-                  dangerouslySetInnerHTML={{
-                    __html: marked(selectedFile.content_md ?? "") as string,
-                  }}
-                />
+                <h2 className="text-lg font-semibold text-text mb-4 scroll-mt-4">
+                  {selectedFile.name}
+                </h2>
+                <MarkdownContent content={selectedFile.content_md ?? ""} className={proseClass} />
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-text-muted">
@@ -203,7 +335,6 @@ export default function SharePage() {
     );
   }
 
-  const html = marked(doc.content_md ?? "") as string;
   return (
     <div className="min-h-screen bg-bg text-text">
       <div className="border-b border-border bg-surface px-6 py-4">
@@ -218,7 +349,7 @@ export default function SharePage() {
         </div>
       </div>
       <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className={proseClass} dangerouslySetInnerHTML={{ __html: html }} />
+        <MarkdownContent content={doc.content_md ?? ""} className={proseClass} />
       </div>
     </div>
   );

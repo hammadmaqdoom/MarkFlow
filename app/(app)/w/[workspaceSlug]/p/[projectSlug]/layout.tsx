@@ -17,15 +17,18 @@ function DocumentsSidebar({
   projectSlug,
   project,
   tree,
+  documents,
   children,
 }: {
   workspaceSlug: string;
   projectSlug: string;
   project: { id: string; name: string; slug: string; workspace_id: string };
   tree: TreeItem[];
+  documents: { id: string; parent_id: string | null; type: string; name: string; path: string }[];
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const workspace = useWorkspace();
   if (!workspace) return <div className="flex h-full flex-1 min-w-0 overflow-auto">{children}</div>;
   return (
@@ -45,7 +48,13 @@ function DocumentsSidebar({
         <aside className="no-print w-56 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-3 p-4 pb-0">
             <span className="text-xs font-medium uppercase tracking-wider text-text-muted">Documents</span>
-            <NewDocFolderButtons projectId={project.id} workspaceSlug={workspaceSlug} projectSlug={projectSlug} />
+            <NewDocFolderButtons
+              projectId={project.id}
+              workspaceSlug={workspaceSlug}
+              projectSlug={projectSlug}
+              folders={documents.filter((d) => d.type === "folder").sort((a, b) => a.path.localeCompare(b.path))}
+              onFolderCreated={(id) => setPendingRenameId(id)}
+            />
           </div>
           <div className="flex-1 overflow-y-auto p-4 min-h-0">
             <ExportButton projectId={project.id} projectSlug={projectSlug} workspaceSlug={workspaceSlug} />
@@ -61,6 +70,8 @@ function DocumentsSidebar({
               workspaceSlug={workspaceSlug}
               projectSlug={projectSlug}
               projectId={project.id}
+              pendingRenameId={pendingRenameId}
+              onClearRenameId={() => setPendingRenameId(null)}
             />
           </div>
           <div className="p-2 border-t border-border flex justify-end">
@@ -141,6 +152,7 @@ function ProjectLayoutInner({ children }: { children: React.ReactNode }) {
         projectSlug={projectSlug}
         project={project}
         tree={tree}
+        documents={documents}
       >
         {children}
       </DocumentsSidebar>
@@ -366,14 +378,21 @@ function ExportButton({
   );
 }
 
+const selectClassName =
+  "mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent";
+
 function NewDocFolderButtons({
   projectId,
   workspaceSlug,
   projectSlug,
+  folders,
+  onFolderCreated,
 }: {
   projectId: string;
   workspaceSlug: string;
   projectSlug: string;
+  folders: { id: string; parent_id: string | null; type: string; name: string; path: string }[];
+  onFolderCreated: (folderId: string) => void;
 }) {
   const router = useRouter();
   const utils = trpc.useUtils();
@@ -385,17 +404,15 @@ function NewDocFolderButtons({
     },
   });
   const createFolder = trpc.document.create.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       utils.project.getById.invalidate();
-      setFolderOpen(false);
-      setFolderName("");
+      onFolderCreated(data.id);
     },
   });
   const [docOpen, setDocOpen] = useState(false);
-  const [folderOpen, setFolderOpen] = useState(false);
   const [docName, setDocName] = useState("");
-  const [folderName, setFolderName] = useState("");
   const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
+  const [selectedDocParentId, setSelectedDocParentId] = useState<string>("");
 
   return (
     <div className="flex items-center gap-0.5">
@@ -412,9 +429,17 @@ function NewDocFolderButtons({
       </button>
       <button
         type="button"
-        onClick={() => setFolderOpen(true)}
-        className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-accent"
-        title="New folder"
+        onClick={() =>
+          createFolder.mutate({
+            projectId,
+            type: "folder",
+            name: "New folder",
+            parentId: undefined,
+          })
+        }
+        disabled={createFolder.isPending}
+        className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-accent disabled:opacity-50"
+        title="New folder (rename in sidebar)"
         aria-label="New folder"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -430,10 +455,12 @@ function NewDocFolderButtons({
               type: "file",
               name: docName || "Untitled",
               templateSlug: selectedTemplateSlug || undefined,
+              parentId: selectedDocParentId || undefined,
             });
             setDocOpen(false);
             setDocName("");
             setSelectedTemplateSlug("");
+            setSelectedDocParentId("");
           }}
           className="space-y-3"
         >
@@ -446,13 +473,29 @@ function NewDocFolderButtons({
               placeholder="Untitled.md"
             />
           </div>
+          <div>
+            <Label htmlFor="doc-location">Location</Label>
+            <select
+              id="doc-location"
+              value={selectedDocParentId}
+              onChange={(e) => setSelectedDocParentId(e.target.value)}
+              className={selectClassName}
+            >
+              <option value="">Project root</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.path}
+                </option>
+              ))}
+            </select>
+          </div>
           {templates && templates.length > 0 && (
             <div>
               <Label>Template (optional)</Label>
               <select
                 value={selectedTemplateSlug}
                 onChange={(e) => setSelectedTemplateSlug(e.target.value)}
-                className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                className={selectClassName}
               >
                 <option value="">None</option>
                 {templates.map((t) => (
@@ -469,33 +512,6 @@ function NewDocFolderButtons({
             </Button>
             <Button type="submit" disabled={createDoc.isPending}>
               {createDoc.isPending ? "Creating…" : "Create"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-      <Modal open={folderOpen} onClose={() => setFolderOpen(false)} title="New folder">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            createFolder.mutate({ projectId, type: "folder", name: folderName || "New folder" });
-          }}
-          className="space-y-3"
-        >
-          <div>
-            <Label htmlFor="folder-name">Name</Label>
-            <Input
-              id="folder-name"
-              value={folderName}
-              onChange={(e) => setFolderName(e.target.value)}
-              placeholder="New folder"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setFolderOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={createFolder.isPending}>
-              {createFolder.isPending ? "Creating…" : "Create"}
             </Button>
           </div>
         </form>

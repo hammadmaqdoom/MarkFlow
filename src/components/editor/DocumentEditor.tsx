@@ -15,6 +15,8 @@ import { lowlight } from "lowlight";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { marked } from "marked";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import TurndownService from "turndown";
 import { gfm as turndownGfm } from "turndown-plugin-gfm";
 import { trpc } from "@/trpc/client";
@@ -312,8 +314,14 @@ function DocumentEditorBody({
         : btoa(String.fromCharCode(...state));
     if (yjsBase64 === lastSavedRef.current) return;
     const html = editor.getHTML() ?? "";
+    let contentMd: string;
+    try {
+      contentMd = turndown.turndown(html);
+    } catch {
+      contentMd = html;
+    }
     updateContent.mutate(
-      { documentId, contentYjs: yjsBase64, contentMd: html },
+      { documentId, contentYjs: yjsBase64, contentMd },
       {
         onSuccess: () => {
           lastSavedRef.current = yjsBase64;
@@ -348,7 +356,8 @@ function DocumentEditorBody({
     if (!editor || initialMdApplied.current) return;
     if (hasInitialContent && initialMd && !initialYjsBase64) {
       try {
-        const html = marked(initialMd) as string;
+        const trimmed = initialMd.trim();
+        const html = trimmed.startsWith("<") ? trimmed : (marked(initialMd) as string);
         editor.commands.setContent(html, false);
         initialMdApplied.current = true;
       } catch {
@@ -370,9 +379,12 @@ function DocumentEditorBody({
   useEffect(() => {
     if (!editor || !restoreContentMd) return;
     try {
-      const html = marked(restoreContentMd) as string;
+      const trimmed = restoreContentMd.trim();
+      const isLegacyHtml = trimmed.startsWith("<");
+      const html = isLegacyHtml ? trimmed : (marked(restoreContentMd) as string);
+      const mdForPanel = isLegacyHtml ? (() => { try { return turndown.turndown(trimmed); } catch { return trimmed; } })() : restoreContentMd;
       markdownSyncFromEditorRef.current = false;
-      setMarkdownValue(restoreContentMd);
+      setMarkdownValue(mdForPanel);
       setMarkdownDirty(false);
       editor.commands.setContent(html, false);
       setDirty(true);
@@ -481,14 +493,19 @@ function DocumentEditorBody({
         )}
         {(mode === "markdown" || mode === "split") && (
           <div className={mode === "split" ? "w-1/2 min-w-0 flex flex-col" : "flex-1 min-w-0 flex flex-col"}>
-            <textarea
-              className="flex-1 w-full min-h-[200px] px-4 py-3 text-sm font-mono text-text bg-bg border-0 focus:outline-none focus:ring-0 resize-none"
-              value={markdownValue}
-              onChange={(e) => handleMarkdownChange(e.target.value)}
-              onBlur={handleMarkdownBlur}
-              placeholder="Markdown…"
-              spellCheck={false}
-            />
+            <div className="flex flex-1 min-h-0 min-w-0">
+              <textarea
+                className="flex-1 w-full min-w-0 min-h-[200px] px-4 py-3 text-sm font-mono text-text bg-bg border-0 focus:outline-none focus:ring-0 resize-none border-r border-border"
+                value={markdownValue}
+                onChange={(e) => handleMarkdownChange(e.target.value)}
+                onBlur={handleMarkdownBlur}
+                placeholder="Markdown…"
+                spellCheck={false}
+              />
+              <div className="flex-1 min-w-0 overflow-auto px-4 py-3 prose prose-sm max-w-none text-text prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-a:text-accent prose-a:no-underline hover:prose-a:underline">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownValue || " "}</ReactMarkdown>
+              </div>
+            </div>
           </div>
         )}
       </div>

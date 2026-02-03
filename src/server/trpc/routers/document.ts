@@ -20,6 +20,25 @@ async function assertEditorProject(ctx: { supabase: Context["supabase"]; user: {
   throw new TRPCError({ code: "FORBIDDEN", message: "Editor or above required" });
 }
 
+async function updateDescendantPaths(
+  supabase: Context["supabase"],
+  folderId: string,
+  folderPath: string
+): Promise<void> {
+  const { data: children } = await supabase
+    .from("documents")
+    .select("id, name, type")
+    .eq("parent_id", folderId);
+  if (!children?.length) return;
+  for (const child of children as { id: string; name: string; type: string }[]) {
+    const childPath = pathFromParentAndName(folderPath, child.name);
+    await supabase.from("documents").update({ path: childPath }).eq("id", child.id);
+    if (child.type === "folder") {
+      await updateDescendantPaths(supabase, child.id, childPath);
+    }
+  }
+}
+
 export const documentRouter = router({
   list: protectedProcedure
     .input(z.object({ projectId: z.string().uuid(), parentId: z.string().uuid().optional().nullable() }))
@@ -120,13 +139,38 @@ export const documentRouter = router({
   update: protectedProcedure
     .input(z.object({ documentId: z.string().uuid(), data: documentUpdateSchema }))
     .mutation(async ({ ctx, input }) => {
-      const { data: doc } = await ctx.supabase.from("documents").select("project_id").eq("id", input.documentId).single();
+      const { data: doc } = await ctx.supabase
+        .from("documents")
+        .select("project_id, parent_id, type, name, path")
+        .eq("id", input.documentId)
+        .single();
       if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
       await assertEditorProject(ctx, doc.project_id);
-      const update: Record<string, unknown> = {};
-      if (input.data.name !== undefined) update.name = input.data.name;
-      if (input.data.path !== undefined) update.path = normalizePath(input.data.path);
-      if (input.data.parentId !== undefined) update.parent_id = input.data.parentId;
+      const docRow = doc as { project_id: string; parent_id: string | null; type: string; name: string; path: string };
+      let newParentId: string | null = docRow.parent_id;
+      let newName = docRow.name;
+      if (input.data.parentId !== undefined) newParentId = input.data.parentId;
+      if (input.data.name !== undefined) newName = input.data.name;
+
+      let newPath: string;
+      if (input.data.path !== undefined) {
+        newPath = normalizePath(input.data.path);
+      } else {
+        let parentPath: string | null = null;
+        if (newParentId) {
+          const { data: parent } = await ctx.supabase.from("documents").select("path").eq("id", newParentId).single();
+          if (!parent) throw new TRPCError({ code: "NOT_FOUND", message: "Parent not found" });
+          parentPath = (parent as { path: string }).path;
+        }
+        newPath = pathFromParentAndName(parentPath, newName);
+      }
+
+      const update: Record<string, unknown> = {
+        ...(input.data.name !== undefined && { name: input.data.name }),
+        path: newPath,
+        ...(input.data.parentId !== undefined && { parent_id: input.data.parentId }),
+      };
+
       const { data, error } = await ctx.supabase
         .from("documents")
         .update(update)
@@ -134,6 +178,23 @@ export const documentRouter = router({
         .select()
         .single();
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+
+      // When moving a folder, recursively update all descendants' paths
+      if (docRow.type === "folder" && (input.data.parentId !== undefined || input.data.name !== undefined)) {
+        const children = await ctx.supabase
+          .from("documents")
+          .select("id, name, type")
+          .eq("parent_id", input.documentId);
+        if (children.data?.length) {
+          for (const child of children.data as { id: string; name: string; type: string }[]) {
+            const childPath = pathFromParentAndName(newPath, child.name);
+            await ctx.supabase.from("documents").update({ path: childPath }).eq("id", child.id);
+            if (child.type === "folder") {
+              await updateDescendantPaths(ctx.supabase, child.id, childPath);
+            }
+          }
+        }
+      }
       return data;
     }),
 

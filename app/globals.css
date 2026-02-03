@@ -71,6 +71,83 @@
   background: var(--bg);
 }
 
+/* Share page: markdown content – explicit styles so headings and TOC always reflect */
+.share-markdown {
+  color: var(--text);
+  line-height: 1.6;
+}
+.share-markdown h1,
+.share-markdown h2,
+.share-markdown h3,
+.share-markdown h4,
+.share-markdown h5,
+.share-markdown h6 {
+  color: var(--text);
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  scroll-margin-top: 1rem;
+}
+.share-markdown h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.share-markdown h2 {
+  font-size: 1.5rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.share-markdown h3 {
+  font-size: 1.25rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+.share-markdown h4 {
+  font-size: 1.125rem;
+}
+.share-markdown h5,
+.share-markdown h6 {
+  font-size: 1rem;
+}
+.share-markdown h6 {
+  color: var(--text-muted);
+}
+.share-markdown p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.share-markdown ul,
+.share-markdown ol {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+}
+.share-markdown li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.share-markdown a[href^="#"] {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.share-markdown a[href^="#"]:hover {
+  text-decoration: underline;
+}
+.share-markdown a[href^="http"] {
+  color: var(--accent);
+  text-decoration: none;
+}
+.share-markdown a[href^="http"]:hover {
+  text-decoration: underline;
+}
+.share-markdown strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
 @media print {
   .no-print {
     display: none !important;

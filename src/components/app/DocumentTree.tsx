@@ -1,8 +1,8 @@
 "use client";
 
+import React, { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/trpc/client";
 
 const PINNED_DOCS_KEY_PREFIX = "docmgmt-pinned-docs-";
@@ -27,31 +27,64 @@ function getPinnedDocIds(projectId: string): string[] {
   }
 }
 
+function flattenItems(list: DocTreeItem[]): DocTreeItem[] {
+  return list.flatMap((i) => [i, ...flattenItems(i.children)]);
+}
+
 export function DocumentTree({
   items,
   workspaceSlug,
   projectSlug,
   projectId,
+  pendingRenameId = null,
+  onClearRenameId,
 }: {
   items: DocTreeItem[];
   workspaceSlug: string;
   projectSlug: string;
   projectId: string;
+  pendingRenameId?: string | null;
+  onClearRenameId?: () => void;
 }) {
   const [pinnedDocIds, setPinnedDocIds] = useState<string[]>(() =>
     getPinnedDocIds(projectId)
   );
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [dragOverTarget, setDragOverTarget] = useState<"root" | string | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
   useEffect(() => {
     setPinnedDocIds(getPinnedDocIds(projectId));
   }, [projectId]);
+
+  const activeRenameId = renameId ?? pendingRenameId ?? null;
+
+  useEffect(() => {
+    if (pendingRenameId) setRenameId(null);
+  }, [pendingRenameId]);
+
   const pinnedSet = useMemo(() => new Set(pinnedDocIds), [pinnedDocIds]);
-  const flattenItems = (list: DocTreeItem[]): DocTreeItem[] =>
-    list.flatMap((i) => [i, ...flattenItems(i.children)]);
   const idToItem = useMemo(() => {
     const map = new Map<string, DocTreeItem>();
     flattenItems(items).forEach((i) => map.set(i.id, i));
     return map;
   }, [items]);
+
+  const getDescendantIdsMemo = useCallback(
+    (folderId: string) => {
+      const all = flattenItems(items);
+      const folder = all.find((i) => i.id === folderId);
+      if (!folder || folder.type !== "folder") return new Set<string>();
+      const set = new Set<string>();
+      function collect(item: DocTreeItem) {
+        set.add(item.id);
+        item.children.forEach(collect);
+      }
+      folder.children.forEach(collect);
+      return set;
+    },
+    [items]
+  );
 
   const handlePinToggle = (docId: string) => {
     setPinnedDocIds((prev) => {
@@ -70,9 +103,54 @@ export function DocumentTree({
     });
   };
 
+  const handleClearRename = useCallback(() => {
+    setRenameId(null);
+    onClearRenameId?.();
+  }, [onClearRenameId]);
+
   const pinnedItems = pinnedDocIds
     .map((id) => idToItem.get(id))
     .filter(Boolean) as DocTreeItem[];
+
+  const utils = trpc.useUtils();
+  const updateDoc = trpc.document.update.useMutation({
+    onSuccess: () => {
+      utils.project.getById.invalidate({ projectId, includeTree: true });
+    },
+  });
+
+  const canDrop = useCallback(
+    (docId: string, target: "root" | string): boolean => {
+      if (target === "root") return true;
+      if (docId === target) return false;
+      const descendants = getDescendantIdsMemo(target);
+      return !descendants.has(docId);
+    },
+    [getDescendantIdsMemo]
+  );
+
+  const rootDropProps = {
+    "data-drop-target": "root" as const,
+    onDragOver: (e: React.DragEvent) => {
+      if (!draggedId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDragOverTarget("root");
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+      setDragOverTarget(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData("application/x-doc-id") || draggedId;
+      if (id) {
+        updateDoc.mutate({ documentId: id, data: { parentId: null } });
+      }
+      setDragOverTarget(null);
+      setDraggedId(null);
+    },
+  };
 
   return (
     <>
@@ -91,12 +169,26 @@ export function DocumentTree({
                 projectId={projectId}
                 isPinnedForId={(id) => pinnedSet.has(id)}
                 onPinToggle={handlePinToggle}
+                renameId={activeRenameId}
+                onRequestRename={setRenameId}
+                onClearRename={handleClearRename}
+                dragOverTarget={dragOverTarget}
+                setDragOverTarget={setDragOverTarget}
+                draggedId={draggedId}
+                setDraggedId={setDraggedId}
+                canDrop={canDrop}
+                getDescendantIds={getDescendantIdsMemo}
               />
             ))}
           </ul>
         </div>
       )}
-      <ul className="space-y-0.5">
+      <ul
+        className={`space-y-0.5 border-l border-border pl-2 rounded transition-colors ${dragOverTarget === "root" ? "bg-accent/10 ring-1 ring-accent/30" : ""}`}
+        role="tree"
+        aria-label="Document hierarchy"
+        {...rootDropProps}
+      >
         {items
           .filter((item) => !pinnedSet.has(item.id))
           .map((item) => (
@@ -108,6 +200,15 @@ export function DocumentTree({
               projectId={projectId}
               isPinnedForId={(id) => pinnedSet.has(id)}
               onPinToggle={handlePinToggle}
+              renameId={activeRenameId}
+              onRequestRename={setRenameId}
+              onClearRename={handleClearRename}
+              dragOverTarget={dragOverTarget}
+              setDragOverTarget={setDragOverTarget}
+              draggedId={draggedId}
+              setDraggedId={setDraggedId}
+              canDrop={canDrop}
+              getDescendantIds={getDescendantIdsMemo}
             />
           ))}
       </ul>
@@ -122,6 +223,15 @@ function DocTreeNode({
   projectId,
   isPinnedForId,
   onPinToggle,
+  renameId,
+  onRequestRename,
+  onClearRename,
+  dragOverTarget,
+  setDragOverTarget,
+  draggedId,
+  setDraggedId,
+  canDrop,
+  getDescendantIds,
 }: {
   item: DocTreeItem;
   workspaceSlug: string;
@@ -129,6 +239,15 @@ function DocTreeNode({
   projectId: string;
   isPinnedForId: (id: string) => boolean;
   onPinToggle: (docId: string) => void;
+  renameId: string | null;
+  onRequestRename: (id: string) => void;
+  onClearRename: () => void;
+  dragOverTarget: "root" | string | null;
+  setDragOverTarget: (t: "root" | string | null) => void;
+  draggedId: string | null;
+  setDraggedId: (id: string | null) => void;
+  canDrop: (docId: string, target: "root" | string) => boolean;
+  getDescendantIds: (folderId: string) => Set<string>;
 }) {
   const isPinned = isPinnedForId(item.id);
   const [expanded, setExpanded] = useState(true);
@@ -140,7 +259,22 @@ function DocTreeNode({
       utils.project.getById.invalidate({ projectId, includeTree: true });
     },
   });
+  const updateDoc = trpc.document.update.useMutation({
+    onSuccess: () => {
+      utils.project.getById.invalidate({ projectId, includeTree: true });
+      onClearRename();
+    },
+  });
   const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isRenaming = renameId === item.id;
+
+  useEffect(() => {
+    if (isRenaming) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isRenaming]);
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -171,6 +305,42 @@ function DocTreeNode({
     e.stopPropagation();
     onPinToggle(item.id);
   };
+
+  const handleRenameCommit = (newName: string) => {
+    const trimmed = newName.trim();
+    if (trimmed && trimmed !== item.name) {
+      updateDoc.mutate({ documentId: item.id, data: { name: trimmed } });
+    } else {
+      onClearRename();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inputRef.current?.blur();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (inputRef.current) inputRef.current.value = item.name;
+      onClearRename();
+      inputRef.current?.blur();
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+    setDraggedId(item.id);
+    e.dataTransfer.setData("application/x-doc-id", item.id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", item.name);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDragOverTarget(null);
+  };
+
+  const isDropTarget = isFolder && dragOverTarget === item.id && draggedId && canDrop(draggedId, item.id);
 
   const actionButtons = (
     <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -220,25 +390,90 @@ function DocTreeNode({
     </span>
   );
 
+  const fileLabelContent = (
+    <>
+      <span className="shrink-0 w-4" />
+      <span aria-hidden>📄</span>
+      <span className="min-w-0 flex-1 truncate">{item.name}</span>
+    </>
+  );
+
+  const folderDropHandlers = isFolder
+    ? {
+        onDragOver: (e: React.DragEvent) => {
+          if (!draggedId || draggedId === item.id) return;
+          if (!canDrop(draggedId, item.id)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "move";
+          setDragOverTarget(item.id);
+        },
+        onDragLeave: (e: React.DragEvent) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+          if (dragOverTarget === item.id) setDragOverTarget(null);
+        },
+        onDrop: (e: React.DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const id = e.dataTransfer.getData("application/x-doc-id");
+          if (id && canDrop(id, item.id)) {
+            updateDoc.mutate({ documentId: id, data: { parentId: item.id } });
+          }
+          setDragOverTarget(null);
+          setDraggedId(null);
+        },
+      }
+    : {};
+
   if (isFolder) {
     return (
-      <li>
-        <div className="group flex items-center gap-1 rounded px-2 py-1.5">
+      <li
+        role="treeitem"
+        aria-expanded={expanded}
+        aria-label={item.name}
+        draggable
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        className={draggedId === item.id ? "opacity-50" : ""}
+      >
+        <div
+          className={`group flex items-center gap-1 rounded px-2 py-1.5 transition-colors ${isDropTarget ? "bg-accent/15 ring-1 ring-accent/40" : ""}`}
+          {...folderDropHandlers}
+        >
           <button
             type="button"
             onClick={() => setExpanded((e) => !e)}
-            className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left text-sm text-text-muted hover:bg-bg hover:text-text"
+            className="shrink-0 w-4 rounded text-center text-sm text-text-muted hover:bg-bg hover:text-text"
+            aria-label={expanded ? "Collapse" : "Expand"}
           >
-            <span className="shrink-0 w-4 text-center">
-              {hasChildren ? (expanded ? "▾" : "▸") : ""}
-            </span>
-            <span aria-hidden>📁</span>
-            <span className="truncate">{item.name}</span>
+            {expanded ? "▾" : "▸"}
           </button>
-          {actionButtons}
+          {isRenaming ? (
+            <RenameInput
+              ref={inputRef}
+              defaultValue={item.name}
+              onBlur={(e) => handleRenameCommit(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              className="min-w-0 flex-1 rounded border border-accent bg-surface px-1 py-0.5 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          ) : (
+            <span
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left text-sm text-text-muted hover:bg-bg hover:text-text"
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRequestRename(item.id);
+              }}
+            >
+              <span aria-hidden>📁</span>
+              <span className="truncate">{item.name}</span>
+            </span>
+          )}
+          {!isRenaming && actionButtons}
         </div>
-        {expanded && hasChildren && (
-          <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-2">
+        {expanded && (
+          <ul role="group" className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-2">
             {item.children
               .filter((child) => !isPinnedForId(child.id))
               .map((child) => (
@@ -250,8 +485,22 @@ function DocTreeNode({
                   projectId={projectId}
                   isPinnedForId={isPinnedForId}
                   onPinToggle={onPinToggle}
+                  renameId={renameId}
+                  onRequestRename={onRequestRename}
+                  onClearRename={onClearRename}
+                  dragOverTarget={dragOverTarget}
+                  setDragOverTarget={setDragOverTarget}
+                  draggedId={draggedId}
+                  setDraggedId={setDraggedId}
+                  canDrop={canDrop}
+                  getDescendantIds={getDescendantIds}
                 />
               ))}
+            {!hasChildren && (
+              <li className="py-1 pl-6 text-xs text-text-muted/70 italic" role="none">
+                No documents
+              </li>
+            )}
           </ul>
         )}
       </li>
@@ -259,16 +508,46 @@ function DocTreeNode({
   }
 
   return (
-    <li className="group">
-      <Link
-        href={`/w/${workspaceSlug}/p/${projectSlug}/doc/${item.id}`}
-        className="flex items-center gap-1 rounded px-2 py-1.5 text-sm text-text-muted hover:bg-bg hover:text-text"
-      >
-        <span className="shrink-0 w-4" />
-        <span aria-hidden>📄</span>
-        <span className="min-w-0 flex-1 truncate">{item.name}</span>
-        {actionButtons}
-      </Link>
+    <li
+      role="treeitem"
+      aria-label={item.name}
+      className={`group ${draggedId === item.id ? "opacity-50" : ""}`}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      {isRenaming ? (
+        <div className="flex items-center gap-1 rounded px-2 py-1.5">
+          <span className="shrink-0 w-4" />
+          <span aria-hidden>📄</span>
+          <RenameInput
+            ref={inputRef}
+            defaultValue={item.name}
+            onBlur={(e) => handleRenameCommit(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="min-w-0 flex-1 rounded border border-accent bg-surface px-1 py-0.5 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+        </div>
+      ) : (
+        <Link
+          href={`/w/${workspaceSlug}/p/${projectSlug}/doc/${item.id}`}
+          className="flex items-center gap-1 rounded px-2 py-1.5 text-sm text-text-muted hover:bg-bg hover:text-text"
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            onRequestRename(item.id);
+          }}
+        >
+          {fileLabelContent}
+          {actionButtons}
+        </Link>
+      )}
     </li>
   );
 }
+
+const RenameInput = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(function RenameInput(props, ref) {
+  return <input ref={ref} {...props} />;
+});
