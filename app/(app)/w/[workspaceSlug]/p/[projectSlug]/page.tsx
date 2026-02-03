@@ -1,8 +1,10 @@
 "use client";
 
+import { ProjectShareModal } from "@/components/app/ProjectShareModal";
 import { useProject } from "@/contexts/ProjectContext";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { trpc } from "@/trpc/client";
 
 export default function ProjectPage() {
@@ -10,6 +12,7 @@ export default function ProjectPage() {
   const workspaceSlug = params.workspaceSlug as string;
   const projectSlug = params.projectSlug as string;
   const project = useProject();
+  const [shareOpen, setShareOpen] = useState(false);
   const { data: projectData, isLoading } = trpc.project.getById.useQuery(
     { projectId: project?.id ?? "", includeTree: true },
     { enabled: !!project?.id }
@@ -31,7 +34,15 @@ export default function ProjectPage() {
     <div className="p-6">
       <div className="flex items-center justify-between gap-4 mb-1">
         <h1 className="text-2xl font-semibold text-text">{project.name}</h1>
-        <a
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShareOpen(true)}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-bg"
+          >
+            Share project
+          </button>
+          <a
           href={connectUrl}
           className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-text-muted hover:bg-surface hover:text-text shrink-0"
           title={githubRepo ? "GitHub connected" : "Connect with GitHub"}
@@ -46,7 +57,13 @@ export default function ProjectPage() {
             <span>Connect with GitHub</span>
           )}
         </a>
+        </div>
       </div>
+      <ProjectShareModal
+        projectId={project.id}
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+      />
       {projectData?.description && (
         <p className="text-text-muted text-sm mb-6">{projectData.description}</p>
       )}

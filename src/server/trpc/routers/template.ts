@@ -86,6 +86,100 @@ What problem does this solve?
 - 
 `,
   },
+  okr: {
+    name: "OKR",
+    description: "Objectives and key results with progress tracking",
+    content: `# OKR
+
+**Period:** 
+**Owner:** 
+
+## Objective 1
+- 
+
+### Key results
+- [ ] 
+- [ ] 
+- [ ] 
+
+## Objective 2
+- 
+
+### Key results
+- [ ] 
+- [ ] 
+
+## Objective 3
+- 
+
+### Key results
+- [ ] 
+`,
+  },
+  "investor-update": {
+    name: "Investor Update",
+    description: "Monthly investor update template",
+    content: `# Investor Update
+
+**Month:** 
+**Company:** 
+
+## Highlights
+- 
+- 
+
+## Metrics
+| Metric | This month | Last month | Change |
+|--------|------------|------------|--------|
+| | | | |
+
+## Asks
+- 
+
+## Timeline
+| Milestone | Target |
+|-----------|--------|
+| | |
+
+## Notes
+`,
+  },
+  "decision-log": {
+    name: "Decision Log",
+    description: "Record decisions with context and outcome",
+    content: `# Decision Log
+
+## Decision 1
+**Date:** 
+**Decision:** 
+
+**Context:** 
+
+**Options considered:**
+- 
+- 
+
+**Outcome:** 
+
+**Owner:** 
+
+---
+
+## Decision 2
+**Date:** 
+**Decision:** 
+
+**Context:** 
+
+**Options considered:**
+- 
+- 
+
+**Outcome:** 
+
+**Owner:** 
+`,
+  },
 };
 
 const ALLOWED_SLUGS = Object.keys(TEMPLATES);

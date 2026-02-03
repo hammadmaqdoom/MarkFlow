@@ -151,7 +151,76 @@ export const documentRouter = router({
         .select("id, updated_at")
         .single();
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+      if (input.contentYjs !== undefined || input.contentMd !== undefined) {
+        const { data: lastVer } = await ctx.supabase
+          .from("document_versions")
+          .select("version_number")
+          .eq("document_id", input.documentId)
+          .order("version_number", { ascending: false })
+          .limit(1)
+          .single();
+        const nextNum = (lastVer?.version_number ?? 0) + 1;
+        await ctx.supabase.from("document_versions").insert({
+          document_id: input.documentId,
+          content_yjs: input.contentYjs !== undefined ? Buffer.from(input.contentYjs, "base64") : null,
+          content_md: input.contentMd ?? null,
+          version_number: nextNum,
+          created_by: ctx.user.id,
+        });
+      }
       return data;
+    }),
+
+  listVersions: protectedProcedure
+    .input(z.object({ documentId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { data: doc } = await ctx.supabase.from("documents").select("project_id").eq("id", input.documentId).single();
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const { data: p } = await ctx.supabase.from("projects").select("workspace_id").eq("id", doc.project_id).single();
+      if (!p) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      const { data: w } = await ctx.supabase.from("workspaces").select("owner_id").eq("id", p.workspace_id).single();
+      if (!w) throw new TRPCError({ code: "NOT_FOUND", message: "Workspace not found" });
+      const { data: m } = await ctx.supabase.from("workspace_members").select("role").eq("workspace_id", p.workspace_id).eq("user_id", ctx.user.id).single();
+      if (!m && w.owner_id !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not a member" });
+      const { data, error } = await ctx.supabase
+        .from("document_versions")
+        .select("id, version_number, created_at, created_by")
+        .eq("document_id", input.documentId)
+        .order("version_number", { ascending: false });
+      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
+      return data ?? [];
+    }),
+
+  getVersion: protectedProcedure
+    .input(z.object({ documentId: z.string().uuid(), versionId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const { data: doc } = await ctx.supabase.from("documents").select("project_id").eq("id", input.documentId).single();
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const { data: p } = await ctx.supabase.from("projects").select("workspace_id").eq("id", doc.project_id).single();
+      if (!p) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      const { data: w } = await ctx.supabase.from("workspaces").select("owner_id").eq("id", p.workspace_id).single();
+      if (!w) throw new TRPCError({ code: "NOT_FOUND", message: "Workspace not found" });
+      const { data: m } = await ctx.supabase.from("workspace_members").select("role").eq("workspace_id", p.workspace_id).eq("user_id", ctx.user.id).single();
+      if (!m && w.owner_id !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not a member" });
+      const { data, error } = await ctx.supabase
+        .from("document_versions")
+        .select("id, version_number, content_md, content_yjs, created_at, created_by")
+        .eq("document_id", input.documentId)
+        .eq("id", input.versionId)
+        .single();
+      if (error || !data) throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+      const row = data as unknown as Record<string, unknown>;
+      return {
+        id: row.id,
+        version_number: row.version_number,
+        content_md: row.content_md,
+        content_yjs_base64:
+          row.content_yjs != null
+            ? Buffer.from(row.content_yjs as Buffer).toString("base64")
+            : null,
+        created_at: row.created_at,
+        created_by: row.created_by,
+      };
     }),
 
   delete: protectedProcedure

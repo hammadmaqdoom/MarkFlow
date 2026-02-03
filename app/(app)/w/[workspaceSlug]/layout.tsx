@@ -8,14 +8,21 @@ import { useSetHeaderContent } from "@/contexts/HeaderContext";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { trpc } from "@/trpc/client";
 
 function WorkspaceLayoutInner({ children }: { children: React.ReactNode }) {
   const params = useParams();
+  const pathname = usePathname();
   const workspaceSlug = params.workspaceSlug as string;
   const setHeader = useSetHeaderContent();
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const isInsideProject = pathname?.includes("/p/") ?? false;
+
+  useEffect(() => {
+    if (isInsideProject) setProjectsCollapsed(true);
+  }, [isInsideProject]);
   const { data: workspace, error, isLoading } = trpc.workspace.getById.useQuery(
     { idOrSlug: workspaceSlug },
     { enabled: !!workspaceSlug }
@@ -80,26 +87,53 @@ function WorkspaceLayoutInner({ children }: { children: React.ReactNode }) {
       }}
     >
       <div className="flex h-full">
-        <aside className="w-56 shrink-0 border-r border-border bg-surface p-4 overflow-y-auto">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
-              Projects
-            </span>
-            <NewProjectButton workspaceId={workspace.id} />
-          </div>
-          <ul className="space-y-0.5">
-            {sortedProjects.map((p) => (
-              <ProjectSidebarItem
-                key={p.id}
-                project={p}
-                workspaceSlug={workspace.slug}
-                workspaceId={workspace.id}
-                isPinned={pinnedProjectIds.includes(p.id)}
-                onPinToggle={handlePinProjectToggle}
-              />
-            ))}
-          </ul>
-        </aside>
+        {projectsCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setProjectsCollapsed(false)}
+            className="no-print shrink-0 w-10 border-r border-border bg-surface flex items-center justify-center hover:bg-bg text-text-muted hover:text-text transition-colors"
+            aria-label="Expand projects sidebar"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        ) : (
+          <aside className="no-print w-56 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between mb-3 p-4 pb-0">
+              <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
+                Projects
+              </span>
+              <NewProjectButton workspaceId={workspace.id} />
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 min-h-0">
+              <ul className="space-y-0.5">
+                {sortedProjects.map((p) => (
+                  <ProjectSidebarItem
+                    key={p.id}
+                    project={p}
+                    workspaceSlug={workspace.slug}
+                    workspaceId={workspace.id}
+                    isPinned={pinnedProjectIds.includes(p.id)}
+                    onPinToggle={handlePinProjectToggle}
+                  />
+                ))}
+              </ul>
+            </div>
+            <div className="p-2 border-t border-border flex justify-end">
+              <button
+                type="button"
+                onClick={() => setProjectsCollapsed(true)}
+                className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-text"
+                aria-label="Collapse projects sidebar"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            </div>
+          </aside>
+        )}
         <div className="flex-1 min-w-0 overflow-auto">{children}</div>
       </div>
     </WorkspaceProvider>

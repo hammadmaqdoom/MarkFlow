@@ -4,10 +4,19 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 import StarterKit from "@tiptap/starter-kit";
+import Table from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableHeader from "@tiptap/extension-table-header";
+import TableCell from "@tiptap/extension-table-cell";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { lowlight } from "lowlight";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { marked } from "marked";
 import TurndownService from "turndown";
+import { gfm as turndownGfm } from "turndown-plugin-gfm";
 import { trpc } from "@/trpc/client";
 
 const PARTYKIT_URL = typeof process.env.NEXT_PUBLIC_PARTYKIT_URL === "string" ? process.env.NEXT_PUBLIC_PARTYKIT_URL : undefined;
@@ -33,6 +42,14 @@ function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 const turndown = new TurndownService({ headingStyle: "atx" });
+turndown.use(turndownGfm);
+marked.setOptions({ gfm: true });
+
+function countTaskItems(md: string): { done: number; total: number } {
+  const unchecked = (md.match(/^\s*-\s*\[\s\]/gm) ?? []).length;
+  const checked = (md.match(/^\s*-\s*\[x\]/gim) ?? []).length;
+  return { done: checked, total: unchecked + checked };
+}
 
 type EditorMode = "wysiwyg" | "markdown" | "split";
 
@@ -41,11 +58,17 @@ export function DocumentEditor({
   initialYjsBase64,
   initialMd,
   templateSlug,
+  restoreContentMd,
+  onRestoreApplied,
+  onAddComment,
 }: {
   documentId: string;
   initialYjsBase64: string | null;
   initialMd: string | null;
   templateSlug?: string | null;
+  restoreContentMd?: string | null;
+  onRestoreApplied?: () => void;
+  onAddComment?: (anchor: { from: number; to: number }) => void;
 }) {
   const utils = trpc.useUtils();
   const { data: me } = trpc.user.me.useQuery();
@@ -148,6 +171,9 @@ export function DocumentEditor({
       setMarkdownDirty={setMarkdownDirty}
       markdownSyncFromEditorRef={markdownSyncFromEditorRef}
       updateProfile={updateProfile}
+      restoreContentMd={restoreContentMd}
+      onRestoreApplied={onRestoreApplied}
+      onAddComment={onAddComment}
     />
   );
 }
@@ -171,6 +197,9 @@ function DocumentEditorBody({
   setMarkdownDirty,
   markdownSyncFromEditorRef,
   updateProfile,
+  restoreContentMd,
+  onRestoreApplied,
+  onAddComment,
 }: {
   documentId: string;
   ydoc: Y.Doc;
@@ -190,6 +219,9 @@ function DocumentEditorBody({
   setMarkdownDirty: React.Dispatch<React.SetStateAction<boolean>>;
   markdownSyncFromEditorRef: React.MutableRefObject<boolean>;
   updateProfile: ReturnType<typeof trpc.user.updateProfile.useMutation>;
+  restoreContentMd?: string | null;
+  onRestoreApplied?: () => void;
+  onAddComment?: (anchor: { from: number; to: number }) => void;
 }) {
   const collaborationUser = useMemo(
     () =>
@@ -202,9 +234,19 @@ function DocumentEditorBody({
     [me]
   );
 
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [selectionRange, setSelectionRange] = useState<{ from: number; to: number } | null>(null);
+
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ history: false }),
+      StarterKit.configure({ history: false, codeBlock: false }),
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      CodeBlockLowlight.configure({ lowlight }),
       Collaboration.configure({ fragment }),
       ...(partyProvider
         ? [
@@ -221,8 +263,40 @@ function DocumentEditorBody({
         class:
           "prose prose-sm max-w-none min-h-[200px] px-4 py-3 focus:outline-none text-text",
       },
+      handleKeyDown(view, event) {
+        if (event.key === "/") {
+          event.preventDefault();
+          setShowSlashMenu(true);
+          return true;
+        }
+        if (event.key === "Escape") {
+          setShowSlashMenu(false);
+        }
+        return false;
+      },
     },
   });
+
+  useEffect(() => {
+    if (!showSlashMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowSlashMenu(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showSlashMenu]);
+
+  useEffect(() => {
+    if (!editor || !onAddComment) return;
+    const onSelectionUpdate = () => {
+      const { from, to } = editor.state.selection;
+      setSelectionRange(from !== to ? { from, to } : null);
+    };
+    editor.on("selectionUpdate", onSelectionUpdate);
+    return () => {
+      editor.off("selectionUpdate", onSelectionUpdate);
+    };
+  }, [editor, onAddComment]);
 
   const updateContent = trpc.document.updateContent.useMutation();
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -294,6 +368,22 @@ function DocumentEditorBody({
   }, [editor, hasInitialContent, initialMd, initialYjsBase64, templateSlug, templateContent]);
 
   useEffect(() => {
+    if (!editor || !restoreContentMd) return;
+    try {
+      const html = marked(restoreContentMd) as string;
+      markdownSyncFromEditorRef.current = false;
+      setMarkdownValue(restoreContentMd);
+      setMarkdownDirty(false);
+      editor.commands.setContent(html, false);
+      setDirty(true);
+      setTimeout(persist, 0);
+    } catch {
+      // ignore
+    }
+    onRestoreApplied?.();
+  }, [restoreContentMd, editor, setMarkdownValue, setMarkdownDirty, persist, onRestoreApplied]);
+
+  useEffect(() => {
     if (!editor || mode === "wysiwyg") return;
     if (markdownSyncFromEditorRef.current) {
       try {
@@ -339,11 +429,27 @@ function DocumentEditorBody({
   if (!editor) return null;
 
   const statusText = updateContent.isPending ? "Saving…" : dirty ? "Unsaved" : "Saved";
+  const currentMd =
+    mode === "markdown" || mode === "split"
+      ? markdownValue
+      : (() => {
+          try {
+            return turndown.turndown(editor.getHTML() ?? "");
+          } catch {
+            return "";
+          }
+        })();
+  const okrProgress =
+    templateSlug === "okr" ? countTaskItems(currentMd) : null;
 
   return (
     <div className="rounded border border-border bg-surface flex flex-col">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 flex-wrap">
-        <EditorToolbar editor={editor} />
+      <div className="no-print flex items-center gap-1 border-b border-border px-2 py-1.5 flex-wrap">
+        <EditorToolbar
+          editor={editor}
+          selectionRange={selectionRange}
+          onAddComment={onAddComment}
+        />
         <div className="ml-auto flex items-center gap-1 border-l border-border pl-2">
           {(["wysiwyg", "markdown", "split"] as const).map((m) => (
             <button
@@ -361,9 +467,15 @@ function DocumentEditorBody({
           ))}
         </div>
       </div>
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 relative">
         {(mode === "wysiwyg" || mode === "split") && (
           <div className={mode === "split" ? "w-1/2 border-r border-border min-w-0" : "flex-1 min-w-0"}>
+            {showSlashMenu && editor && (
+              <SlashMenu
+                editor={editor}
+                onSelect={() => setShowSlashMenu(false)}
+              />
+            )}
             <EditorContent editor={editor} />
           </div>
         )}
@@ -380,14 +492,27 @@ function DocumentEditorBody({
           </div>
         )}
       </div>
-      <div className="border-t border-border px-4 py-1.5 text-xs text-text-muted">
-        {statusText}
+      <div className="no-print border-t border-border px-4 py-1.5 flex items-center justify-between gap-4 text-xs text-text-muted">
+        <span>{statusText}</span>
+        {okrProgress !== null && okrProgress.total > 0 && (
+          <span>
+            Key results: {okrProgress.done}/{okrProgress.total} done
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+function EditorToolbar({
+  editor,
+  selectionRange,
+  onAddComment,
+}: {
+  editor: ReturnType<typeof useEditor>;
+  selectionRange: { from: number; to: number } | null;
+  onAddComment?: (anchor: { from: number; to: number }) => void;
+}) {
   if (!editor) return null;
   return (
     <div className="flex items-center gap-0.5 flex-wrap">
@@ -456,6 +581,82 @@ function EditorToolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       >
         {"</>"}
       </ToolbarButton>
+      <span className="w-px h-4 bg-border mx-0.5" aria-hidden />
+      <ToolbarButton
+        onClick={() =>
+          editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        }
+        active={editor.isActive("table")}
+        title="Insert table"
+      >
+        Table
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().toggleTaskList().run()}
+        active={editor.isActive("taskList")}
+        title="Checklist"
+      >
+        Checklist
+      </ToolbarButton>
+      {onAddComment && selectionRange && (
+        <>
+          <span className="w-px h-4 bg-border mx-0.5" aria-hidden />
+          <button
+            type="button"
+            onClick={() => onAddComment(selectionRange)}
+            className="rounded p-1.5 text-sm text-text-muted hover:bg-bg hover:text-text"
+            title="Add comment"
+          >
+            Comment
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SlashMenu({
+  editor,
+  onSelect,
+}: {
+  editor: NonNullable<ReturnType<typeof useEditor>>;
+  onSelect: () => void;
+}) {
+  const run = (fn: () => boolean) => {
+    fn();
+    onSelect();
+  };
+  const items: { label: string; fn: () => boolean }[] = [
+    { label: "Heading 1", fn: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+    { label: "Heading 2", fn: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+    { label: "Heading 3", fn: () => editor.chain().focus().toggleHeading({ level: 3 }).run() },
+    { label: "Bullet list", fn: () => editor.chain().focus().toggleBulletList().run() },
+    { label: "Numbered list", fn: () => editor.chain().focus().toggleOrderedList().run() },
+    { label: "Checklist", fn: () => editor.chain().focus().toggleTaskList().run() },
+    {
+      label: "Table",
+      fn: () =>
+        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    },
+    { label: "Code block", fn: () => editor.chain().focus().toggleCodeBlock().run() },
+  ];
+  return (
+    <div
+      className="absolute left-4 top-12 z-10 rounded-md border border-border bg-surface py-1 shadow-md min-w-[180px]"
+      role="menu"
+      aria-label="Insert block"
+    >
+      {items.map(({ label, fn }) => (
+        <button
+          key={label}
+          type="button"
+          role="menuitem"
+          className="w-full px-3 py-1.5 text-left text-sm text-text hover:bg-bg"
+          onClick={() => run(fn)}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

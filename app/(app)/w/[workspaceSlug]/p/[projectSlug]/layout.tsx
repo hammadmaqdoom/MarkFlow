@@ -42,22 +42,10 @@ function DocumentsSidebar({
           </svg>
         </button>
       ) : (
-        <aside className="w-56 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
+        <aside className="no-print w-56 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-3 p-4 pb-0">
             <span className="text-xs font-medium uppercase tracking-wider text-text-muted">Documents</span>
-            <div className="flex items-center gap-1">
-              <NewDocFolderButtons projectId={project.id} workspaceSlug={workspaceSlug} projectSlug={projectSlug} />
-              <button
-                type="button"
-                onClick={() => setCollapsed(true)}
-                className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-text"
-                aria-label="Collapse documents sidebar"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-            </div>
+            <NewDocFolderButtons projectId={project.id} workspaceSlug={workspaceSlug} projectSlug={projectSlug} />
           </div>
           <div className="flex-1 overflow-y-auto p-4 min-h-0">
             <ExportButton projectId={project.id} projectSlug={projectSlug} workspaceSlug={workspaceSlug} />
@@ -74,6 +62,18 @@ function DocumentsSidebar({
               projectSlug={projectSlug}
               projectId={project.id}
             />
+          </div>
+          <div className="p-2 border-t border-border flex justify-end">
+            <button
+              type="button"
+              onClick={() => setCollapsed(true)}
+              className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-text"
+              aria-label="Collapse documents sidebar"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
           </div>
         </aside>
       )}

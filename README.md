@@ -12,7 +12,11 @@ The Founder's Growth Engine — real-time collaborative documentation with dual-
 
 2. **Environment**
 
-   Copy `.env.example` to `.env.local` and set your Supabase (and optional PartyKit, GitHub) variables.
+   Copy `.env.example` to `.env` (or `.env.local`) and set:
+
+   - **Supabase:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (for API/server).
+   - **PartyKit (real-time):** `NEXT_PUBLIC_PARTYKIT_URL` (e.g. `http://localhost:1999` in dev). Run PartyKit with `npm run partykit:dev` alongside the app.
+   - **GitHub (optional):** for OAuth and sync, set the keys referenced in `.env.example`.
 
 3. **Database migrations (Supabase)**
 
@@ -32,23 +36,36 @@ The Founder's Growth Engine — real-time collaborative documentation with dual-
 
 4. **Run the app**
 
+   **Development (Next.js + PartyKit for real-time editing):**
+
    ```bash
-   npm run dev
+   npm run dev          # Next.js on http://localhost:3000
+   npm run partykit:dev # PartyKit (separate terminal)
    ```
 
-   Open [http://localhost:3000](http://localhost:3000).
+   Open [http://localhost:3000](http://localhost:3000). For full editor sync, both dev servers should be running.
+
+   **Production build:**
+
+   ```bash
+   npm run build
+   npm run start
+   ```
 
 ## Scripts
 
 - `npm run dev` — start Next.js dev server
+- `npm run partykit:dev` — start PartyKit dev server (real-time doc sync)
 - `npm run build` — production build
 - `npm run start` — start production server
 - `npm run lint` — run ESLint
 - `npm run format` — run Prettier
+- `npm run test` — run unit tests (Vitest)
+- `npm run test:e2e` — run E2E tests (Playwright; requires app running)
 
 ## Docs
 
 - [Database structure](docs/01-db-structure.md)
 - [API plan](docs/02-api-plan-structure.md)
 - [Frontend UI implementation](docs/03-frontend-ui-implementation.md)
-- [PRD & architecture](markflow-prd-architecture.md)
+- [PRD & architecture](docs/markflow-prd-architecture.md)

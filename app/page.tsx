@@ -13,7 +13,7 @@ export default function Home() {
         </p>
         <p className="text-base text-text-muted">
           Write in Markdown. Your co-founder edits in WYSIWYG. Same doc, live
-          sync. Connect GitHub. Export for Claude.
+          sync. Tables, checklists, templates. Connect GitHub. Export for Claude.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
           <Link
