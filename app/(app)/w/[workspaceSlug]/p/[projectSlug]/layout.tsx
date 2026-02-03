@@ -255,31 +255,9 @@ function GitHubSettings({
     );
   }
 
-  if (reposError?.data?.code === "PRECONDITION_FAILED") {
-    return (
-      <div className="mb-3">
-        <a
-          href={connectUrl}
-          className="block w-full rounded border border-border bg-surface px-3 py-2 text-xs font-medium text-accent hover:bg-bg"
-        >
-          Connect GitHub
-        </a>
-      </div>
-    );
-  }
-
-  if (!repos?.length) {
-    return (
-      <div className="mb-3">
-        <a
-          href={connectUrl}
-          className="block w-full rounded border border-border bg-surface px-3 py-2 text-xs font-medium text-accent hover:bg-bg"
-        >
-          Connect GitHub
-        </a>
-      </div>
-    );
-  }
+  // When not connected, Connect GitHub is shown on the project intro page (default home).
+  if (reposError?.data?.code === "PRECONDITION_FAILED") return null;
+  if (!repos?.length) return null;
 
   return (
     <div className="mb-3 rounded border border-border p-2">
@@ -420,21 +398,28 @@ function NewDocFolderButtons({
   const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
 
   return (
-    <div className="flex gap-1">
+    <div className="flex items-center gap-0.5">
       <button
         type="button"
         onClick={() => setDocOpen(true)}
-        className="text-accent hover:underline text-xs font-medium"
+        className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-accent"
+        title="New doc"
+        aria-label="New doc"
       >
-        New doc
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
       </button>
-      <span className="text-text-muted">·</span>
       <button
         type="button"
         onClick={() => setFolderOpen(true)}
-        className="text-accent hover:underline text-xs font-medium"
+        className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-accent"
+        title="New folder"
+        aria-label="New folder"
       >
-        New folder
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+        </svg>
       </button>
       <Modal open={docOpen} onClose={() => setDocOpen(false)} title="New document">
         <form

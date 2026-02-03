@@ -191,9 +191,23 @@ export function Breadcrumb({ documentName, documentId }: BreadcrumbProps) {
   const workspace = useWorkspace();
   const project = useProject();
 
+  // Only show workspace switcher dropdown on workspace home; use a plain link when inside a project/doc
+  const showWorkspaceDropdown = workspace && !project && !documentId;
+
   return (
     <nav aria-label="Breadcrumb" className="flex items-center text-sm min-w-0">
-      <WorkspaceDropdown />
+      {showWorkspaceDropdown ? (
+        <WorkspaceDropdown />
+      ) : workspace ? (
+        <Link
+          href={`/w/${workspace.slug}`}
+          className="rounded px-2 py-1.5 text-sm text-text-muted hover:bg-bg hover:text-text truncate max-w-[12rem] min-w-0"
+        >
+          {workspace.name}
+        </Link>
+      ) : (
+        <WorkspaceDropdown />
+      )}
       {project && (
         <>
           {sep}
