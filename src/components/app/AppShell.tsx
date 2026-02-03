@@ -50,9 +50,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             MarkFlow
           </Link>
+          <div className="h-6 w-px shrink-0 bg-border" aria-hidden />
           <div className="flex-1 min-w-0">
             {useHeaderContent() ?? <Breadcrumb />}
           </div>
+          <div className="h-6 w-px shrink-0 bg-border" aria-hidden />
           <div className="relative">
             <button
               type="button"

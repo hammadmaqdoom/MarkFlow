@@ -12,6 +12,76 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/trpc/client";
 import { DocumentTree } from "@/components/app/DocumentTree";
 
+function DocumentsSidebar({
+  workspaceSlug,
+  projectSlug,
+  project,
+  tree,
+  children,
+}: {
+  workspaceSlug: string;
+  projectSlug: string;
+  project: { id: string; name: string; slug: string; workspace_id: string };
+  tree: TreeItem[];
+  children: React.ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const workspace = useWorkspace();
+  if (!workspace) return <div className="flex h-full flex-1 min-w-0 overflow-auto">{children}</div>;
+  return (
+    <div className="flex h-full">
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="shrink-0 w-10 border-r border-border bg-surface flex items-center justify-center hover:bg-bg text-text-muted hover:text-text transition-colors"
+          aria-label="Expand documents sidebar"
+        >
+          <svg className="h-5 w-5 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      ) : (
+        <aside className="w-56 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-3 p-4 pb-0">
+            <span className="text-xs font-medium uppercase tracking-wider text-text-muted">Documents</span>
+            <div className="flex items-center gap-1">
+              <NewDocFolderButtons projectId={project.id} workspaceSlug={workspaceSlug} projectSlug={projectSlug} />
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                className="rounded p-1.5 text-text-muted hover:bg-bg hover:text-text"
+                aria-label="Collapse documents sidebar"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            <ExportButton projectId={project.id} projectSlug={projectSlug} workspaceSlug={workspaceSlug} />
+            <GitHubSettings
+              projectId={project.id}
+              projectSlug={projectSlug}
+              workspaceSlug={workspaceSlug}
+              githubRepo={(project as { github_repo?: string | null }).github_repo ?? null}
+              githubBranch={(project as { github_branch?: string | null }).github_branch ?? null}
+            />
+            <DocumentTree
+              items={tree}
+              workspaceSlug={workspaceSlug}
+              projectSlug={projectSlug}
+              projectId={project.id}
+            />
+          </div>
+        </aside>
+      )}
+      <div className="flex-1 min-w-0 overflow-auto">{children}</div>
+    </div>
+  );
+}
+
 function ProjectLayoutInner({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const workspaceSlug = params.workspaceSlug as string;
@@ -66,31 +136,14 @@ function ProjectLayoutInner({ children }: { children: React.ReactNode }) {
         workspaceId: project.workspace_id,
       }}
     >
-      <div className="flex h-full">
-        <aside className="w-56 shrink-0 border-r border-border bg-surface p-4 overflow-y-auto">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium uppercase tracking-wider text-text-muted">
-              Documents
-            </span>
-            <NewDocFolderButtons projectId={project.id} workspaceSlug={workspaceSlug} projectSlug={projectSlug} />
-          </div>
-          <ExportButton projectId={project.id} projectSlug={projectSlug} workspaceSlug={workspaceSlug} />
-          <GitHubSettings
-            projectId={project.id}
-            projectSlug={projectSlug}
-            workspaceSlug={workspaceSlug}
-            githubRepo={(project as { github_repo?: string | null }).github_repo ?? null}
-            githubBranch={(project as { github_branch?: string | null }).github_branch ?? null}
-          />
-          <DocumentTree
-            items={tree}
-            workspaceSlug={workspaceSlug}
-            projectSlug={projectSlug}
-            projectId={project.id}
-          />
-        </aside>
-        <div className="flex-1 min-w-0 overflow-auto">{children}</div>
-      </div>
+      <DocumentsSidebar
+        workspaceSlug={workspaceSlug}
+        projectSlug={projectSlug}
+        project={project}
+        tree={tree}
+      >
+        {children}
+      </DocumentsSidebar>
     </ProjectProvider>
   );
 }
