@@ -6,6 +6,11 @@ const TEMPLATES: Record<
   string,
   { name: string; description?: string; content: string }
 > = {
+  blank: {
+    name: "Blank",
+    description: "Start with an empty document",
+    content: "",
+  },
   prd: {
     name: "Product Requirements Document",
     description: "Structured PRD template for product specs",
@@ -183,6 +188,12 @@ What problem does this solve?
 };
 
 const ALLOWED_SLUGS = Object.keys(TEMPLATES);
+
+/** Returns template markdown content by slug, or null if slug is unknown. Used when creating docs from template. */
+export function getTemplateContent(slug: string): string | null {
+  const t = TEMPLATES[slug];
+  return t ? t.content : null;
+}
 
 export const templateRouter = router({
   list: publicProcedure.query(() => {

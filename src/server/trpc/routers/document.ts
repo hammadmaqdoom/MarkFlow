@@ -6,6 +6,7 @@ import {
   documentUpdateSchema,
 } from "@/server/api/schemas/document";
 import { pathFromParentAndName, normalizePath } from "@/server/lib/path";
+import { getTemplateContent } from "./template";
 import type { Context } from "../context";
 import { protectedProcedure, router } from "../trpc";
 
@@ -50,6 +51,8 @@ export const documentRouter = router({
         parentPath = parent.path;
       }
       const path = pathFromParentAndName(parentPath, input.name);
+      const initialContentMd =
+        input.type === "file" && input.templateSlug ? getTemplateContent(input.templateSlug) : null;
       const { data, error } = await ctx.supabase
         .from("documents")
         .insert({
@@ -59,7 +62,9 @@ export const documentRouter = router({
           name: input.name,
           path,
           template_slug: input.templateSlug ?? null,
-          ...(input.type === "folder" ? {} : { content_yjs: null, content_md: null }),
+          ...(input.type === "folder"
+            ? {}
+            : { content_yjs: null, content_md: initialContentMd ?? null }),
         })
         .select()
         .single();

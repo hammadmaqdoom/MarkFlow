@@ -3,6 +3,9 @@
 import { useParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { marked } from "marked";
+
+marked.setOptions({ gfm: true });
 
 type ShareFile = { id: string; name: string; path?: string; content_md: string };
 type ShareDoc =
@@ -184,7 +187,9 @@ export default function SharePage() {
                 <h2 className="text-lg font-semibold text-text mb-4">{selectedFile.name}</h2>
                 <div
                   className={proseClass}
-                  dangerouslySetInnerHTML={{ __html: selectedFile.content_md ?? "" }}
+                  dangerouslySetInnerHTML={{
+                    __html: marked(selectedFile.content_md ?? "") as string,
+                  }}
                 />
               </div>
             ) : (
@@ -198,7 +203,7 @@ export default function SharePage() {
     );
   }
 
-  const html = doc.content_md ?? "";
+  const html = marked(doc.content_md ?? "") as string;
   return (
     <div className="min-h-screen bg-bg text-text">
       <div className="border-b border-border bg-surface px-6 py-4">
