@@ -13,14 +13,17 @@ import TaskItem from "@tiptap/extension-task-item";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { lowlight } from "lowlight";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import * as Y from "yjs";
 import { marked } from "marked";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import TurndownService from "turndown";
 import { gfm as turndownGfm } from "turndown-plugin-gfm";
 import { trpc } from "@/trpc/client";
-import { getDocumentLinkComponents } from "./DocumentLink";
+
+import "@uiw/react-md-editor/markdown-editor.css";
+import "@uiw/react-markdown-preview/markdown.css";
+
+const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
 
 const PARTYKIT_URL = typeof process.env.NEXT_PUBLIC_PARTYKIT_URL === "string" ? process.env.NEXT_PUBLIC_PARTYKIT_URL : undefined;
 
@@ -54,7 +57,7 @@ function countTaskItems(md: string): { done: number; total: number } {
   return { done: checked, total: unchecked + checked };
 }
 
-type EditorMode = "wysiwyg" | "markdown" | "split";
+type EditorMode = "wysiwyg" | "markdown";
 
 export interface DocumentEditorHandle {
   save: () => void;
@@ -89,8 +92,9 @@ export const DocumentEditor = forwardRef<DocumentEditorHandle, {
 
   const [mode, setModeState] = useState<EditorMode>(() => {
     if (typeof window === "undefined") return "wysiwyg";
-    const stored = localStorage.getItem(EDITOR_PREFERENCE_KEY) as EditorMode | null;
-    if (stored && ["wysiwyg", "markdown", "split"].includes(stored)) return stored;
+    const stored = localStorage.getItem(EDITOR_PREFERENCE_KEY) as string | null;
+    if (stored === "wysiwyg" || stored === "markdown") return stored;
+    if (stored === "split") return "markdown"; // legacy: treat split as markdown
     return "wysiwyg";
   });
   const [markdownValue, setMarkdownValue] = useState("");
@@ -109,12 +113,13 @@ export const DocumentEditor = forwardRef<DocumentEditorHandle, {
   // Apply saved user preference when profile loads (e.g. after reload). Without this,
   // we default to "wysiwyg" because me is undefined on first paint, and never switch.
   useEffect(() => {
-    const pref = me?.profile?.editor_preference as EditorMode | undefined;
-    if (!pref || !["wysiwyg", "markdown", "split"].includes(pref)) return;
+    const pref = me?.profile?.editor_preference as string | undefined;
+    const resolved: EditorMode = pref === "markdown" ? "markdown" : "wysiwyg"; // treat "split" or unknown as wysiwyg
+    if (!pref) return;
     const stored = localStorage.getItem(EDITOR_PREFERENCE_KEY);
     if (stored != null && stored !== "") return;
-    setModeState(pref);
-    localStorage.setItem(EDITOR_PREFERENCE_KEY, pref);
+    setModeState(resolved);
+    localStorage.setItem(EDITOR_PREFERENCE_KEY, resolved);
   }, [me?.profile?.editor_preference]);
 
   const hasInitialContent = Boolean(
@@ -519,7 +524,7 @@ const DocumentEditorBody = forwardRef<
 
   const statusText = updateContent.isPending ? "Saving…" : dirty ? "Unsaved" : "Saved";
   const currentMd =
-    mode === "markdown" || mode === "split"
+    mode === "markdown"
       ? markdownValue
       : (() => {
           try {
@@ -540,25 +545,31 @@ const DocumentEditorBody = forwardRef<
           onAddComment={onAddComment}
         />
         <div className="ml-auto flex items-center gap-1 border-l border-border pl-2">
-          {(["wysiwyg", "markdown", "split"] as const).map((m) => (
+          {(["wysiwyg", "markdown"] as const).map((m) => (
             <button
               key={m}
               type="button"
-              onClick={() => setMode(m)}
+              onClick={() => {
+                if (m === "wysiwyg" && mode === "markdown" && markdownDirty) {
+                  applyMarkdownToEditor(markdownValue);
+                  setMarkdownDirty(false);
+                }
+                setMode(m);
+              }}
               className={`rounded px-2 py-1 text-xs font-medium capitalize ${
                 mode === m
                   ? "bg-accent text-white"
                   : "text-text-muted hover:bg-bg hover:text-text"
               }`}
             >
-              {m}
+              {m === "wysiwyg" ? "WYSIWYG" : "Markdown"}
             </button>
           ))}
         </div>
       </div>
       <div className="flex flex-1 min-h-0 relative">
-        {(mode === "wysiwyg" || mode === "split") && (
-          <div className={mode === "split" ? "w-1/2 border-r border-border min-w-0" : "flex-1 min-w-0"}>
+        {mode === "wysiwyg" && (
+          <div className="flex-1 min-w-0">
             {showSlashMenu && editor && (
               <SlashMenu
                 editor={editor}
@@ -568,26 +579,22 @@ const DocumentEditorBody = forwardRef<
             <EditorContent editor={editor} />
           </div>
         )}
-        {(mode === "markdown" || mode === "split") && (
-          <div className={mode === "split" ? "w-1/2 min-w-0 flex flex-col" : "flex-1 min-w-0 flex flex-col"}>
-            <div className="flex flex-1 min-h-0 min-w-0">
-              <textarea
-                className="flex-1 w-full min-w-0 min-h-[200px] px-4 py-3 text-sm font-mono text-text bg-bg border-0 focus:outline-none focus:ring-0 resize-none border-r border-border"
-                value={markdownValue}
-                onChange={(e) => handleMarkdownChange(e.target.value)}
-                onBlur={handleMarkdownBlur}
-                placeholder="Markdown…"
-                spellCheck={false}
-              />
-              <div className="flex-1 min-w-0 overflow-auto px-4 py-3 prose prose-sm max-w-none text-text prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-a:text-accent prose-a:no-underline hover:prose-a:underline">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={getDocumentLinkComponents()}
-                >
-                  {markdownValue || " "}
-                </ReactMarkdown>
-              </div>
-            </div>
+        {mode === "markdown" && (
+          <div className="flex-1 min-w-0 flex flex-col min-h-[200px] data-color-mode-light">
+            <MDEditor
+              value={markdownValue}
+              onChange={(val) => {
+                setMarkdownValue(val ?? "");
+                setMarkdownDirty(true);
+              }}
+              preview="live"
+              visibleDragbar={false}
+              height="100%"
+              textareaProps={{
+                placeholder: "Write markdown…",
+                onBlur: handleMarkdownBlur,
+              }}
+            />
           </div>
         )}
       </div>

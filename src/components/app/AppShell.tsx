@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { trpc } from "@/trpc/client";
 
 const EDITOR_PREFERENCE_KEY = "markflow-editor-preference";
-type EditorMode = "wysiwyg" | "markdown" | "split";
+type EditorMode = "wysiwyg" | "markdown";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -27,7 +27,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const updateProfile = trpc.user.updateProfile.useMutation({
     onSuccess: () => utils.user.me.invalidate(),
   });
-  const editorPref = (profile?.editor_preference as EditorMode) ?? "wysiwyg";
+  const rawPref = profile?.editor_preference as string | undefined;
+  const editorPref: EditorMode = rawPref === "markdown" ? "markdown" : "wysiwyg"; // treat "split" or unknown as wysiwyg
 
   useEffect(() => {
     const root = document.documentElement;
@@ -122,7 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       Default editor
                     </span>
                     <div className="mt-1 flex gap-1">
-                      {(["wysiwyg", "markdown", "split"] as const).map((m) => (
+                      {(["wysiwyg", "markdown"] as const).map((m) => (
                         <button
                           key={m}
                           type="button"
@@ -133,7 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                               : "bg-bg text-text-muted hover:text-text"
                           }`}
                         >
-                          {m}
+                          {m === "wysiwyg" ? "WYSIWYG" : "Markdown"}
                         </button>
                       ))}
                     </div>

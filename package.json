@@ -34,6 +34,7 @@
     "@trpc/client": "^10.45.2",
     "@trpc/react-query": "^10.45.2",
     "@trpc/server": "^10.45.2",
+    "@uiw/react-md-editor": "^4.0.11",
     "diff": "^5.2.0",
     "inngest": "^3.50.0",
     "jszip": "^3.10.1",
