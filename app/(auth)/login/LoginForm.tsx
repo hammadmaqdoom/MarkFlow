@@ -98,12 +98,14 @@ export function LoginForm() {
           Sign in with email
         </button>
       </form>
+      {/* SIGNUP DISABLED - Uncomment when ready to enable signups
       <p className="mt-4 text-center text-sm text-text-muted">
         Don&apos;t have an account?{" "}
         <Link href="/signup" className="text-accent hover:underline">
           Sign up
         </Link>
       </p>
+      */}
     </div>
   );
 }

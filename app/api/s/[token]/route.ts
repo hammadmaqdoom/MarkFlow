@@ -76,6 +76,7 @@ export async function GET(
         .select("id, name, path, content_md")
         .eq("project_id", docRow.project_id)
         .eq("type", "file")
+        .eq("visible_in_share", true)
         .like("path", `${prefix}%`)
         .order("path");
 
@@ -140,6 +141,7 @@ export async function GET(
     .select("id, name, path, content_md")
     .eq("project_id", prow.project_id)
     .eq("type", "file")
+    .eq("visible_in_share", true)
     .order("path");
 
   if (filesError) {

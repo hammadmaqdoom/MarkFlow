@@ -12,7 +12,7 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { lowlight } from "lowlight";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { marked } from "marked";
 import ReactMarkdown from "react-markdown";
@@ -55,15 +55,11 @@ function countTaskItems(md: string): { done: number; total: number } {
 
 type EditorMode = "wysiwyg" | "markdown" | "split";
 
-export function DocumentEditor({
-  documentId,
-  initialYjsBase64,
-  initialMd,
-  templateSlug,
-  restoreContentMd,
-  onRestoreApplied,
-  onAddComment,
-}: {
+export interface DocumentEditorHandle {
+  save: () => void;
+}
+
+export const DocumentEditor = forwardRef<DocumentEditorHandle, {
   documentId: string;
   initialYjsBase64: string | null;
   initialMd: string | null;
@@ -71,7 +67,19 @@ export function DocumentEditor({
   restoreContentMd?: string | null;
   onRestoreApplied?: () => void;
   onAddComment?: (anchor: { from: number; to: number }) => void;
-}) {
+  onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
+}>(function DocumentEditor({
+  documentId,
+  initialYjsBase64,
+  initialMd,
+  templateSlug,
+  restoreContentMd,
+  onRestoreApplied,
+  onAddComment,
+  onDirtyChange,
+  onSavingChange,
+}, ref) {
   const utils = trpc.useUtils();
   const { data: me } = trpc.user.me.useQuery();
   const updateProfile = trpc.user.updateProfile.useMutation({
@@ -82,7 +90,7 @@ export function DocumentEditor({
     if (typeof window === "undefined") return "wysiwyg";
     const stored = localStorage.getItem(EDITOR_PREFERENCE_KEY) as EditorMode | null;
     if (stored && ["wysiwyg", "markdown", "split"].includes(stored)) return stored;
-    return (me?.profile?.editor_preference as EditorMode) ?? "wysiwyg";
+    return "wysiwyg";
   });
   const [markdownValue, setMarkdownValue] = useState("");
   const [markdownDirty, setMarkdownDirty] = useState(false);
@@ -96,6 +104,17 @@ export function DocumentEditor({
     },
     [updateProfile]
   );
+
+  // Apply saved user preference when profile loads (e.g. after reload). Without this,
+  // we default to "wysiwyg" because me is undefined on first paint, and never switch.
+  useEffect(() => {
+    const pref = me?.profile?.editor_preference as EditorMode | undefined;
+    if (!pref || !["wysiwyg", "markdown", "split"].includes(pref)) return;
+    const stored = localStorage.getItem(EDITOR_PREFERENCE_KEY);
+    if (stored != null && stored !== "") return;
+    setModeState(pref);
+    localStorage.setItem(EDITOR_PREFERENCE_KEY, pref);
+  }, [me?.profile?.editor_preference]);
 
   const hasInitialContent = Boolean(
     (typeof initialYjsBase64 === "string" && initialYjsBase64) || (typeof initialMd === "string" && initialMd?.trim())
@@ -155,6 +174,7 @@ export function DocumentEditor({
 
   return (
     <DocumentEditorBody
+      ref={ref}
       documentId={documentId}
       ydoc={ydoc}
       fragment={fragment}
@@ -176,11 +196,40 @@ export function DocumentEditor({
       restoreContentMd={restoreContentMd}
       onRestoreApplied={onRestoreApplied}
       onAddComment={onAddComment}
+      onDirtyChange={onDirtyChange}
+      onSavingChange={onSavingChange}
     />
   );
-}
+});
 
-function DocumentEditorBody({
+const DocumentEditorBody = forwardRef<
+  DocumentEditorHandle,
+  {
+    documentId: string;
+    ydoc: Y.Doc;
+    fragment: Y.XmlFragment;
+    partyProvider: InstanceType<typeof import("y-partykit/provider").default> | null;
+    me: { user: { id: string; email?: string }; profile?: { full_name?: string } | null } | undefined;
+    hasInitialContent: boolean;
+    initialMd: string | null;
+    initialYjsBase64: string | null;
+    templateSlug?: string | null;
+    templateContent: string | undefined;
+    setMode: (m: EditorMode) => void;
+    mode: EditorMode;
+    markdownValue: string;
+    setMarkdownValue: React.Dispatch<React.SetStateAction<string>>;
+    markdownDirty: boolean;
+    setMarkdownDirty: React.Dispatch<React.SetStateAction<boolean>>;
+    markdownSyncFromEditorRef: React.MutableRefObject<boolean>;
+    updateProfile: ReturnType<typeof trpc.user.updateProfile.useMutation>;
+    restoreContentMd?: string | null;
+    onRestoreApplied?: () => void;
+    onAddComment?: (anchor: { from: number; to: number }) => void;
+    onDirtyChange?: (dirty: boolean) => void;
+    onSavingChange?: (saving: boolean) => void;
+  }
+>(function DocumentEditorBody({
   documentId,
   ydoc,
   fragment,
@@ -202,29 +251,9 @@ function DocumentEditorBody({
   restoreContentMd,
   onRestoreApplied,
   onAddComment,
-}: {
-  documentId: string;
-  ydoc: Y.Doc;
-  fragment: Y.XmlFragment;
-  partyProvider: InstanceType<typeof import("y-partykit/provider").default> | null;
-  me: { user: { id: string; email?: string }; profile?: { full_name?: string } | null } | undefined;
-  hasInitialContent: boolean;
-  initialMd: string | null;
-  initialYjsBase64: string | null;
-  templateSlug?: string | null;
-  templateContent: string | undefined;
-  setMode: (m: EditorMode) => void;
-  mode: EditorMode;
-  markdownValue: string;
-  setMarkdownValue: React.Dispatch<React.SetStateAction<string>>;
-  markdownDirty: boolean;
-  setMarkdownDirty: React.Dispatch<React.SetStateAction<boolean>>;
-  markdownSyncFromEditorRef: React.MutableRefObject<boolean>;
-  updateProfile: ReturnType<typeof trpc.user.updateProfile.useMutation>;
-  restoreContentMd?: string | null;
-  onRestoreApplied?: () => void;
-  onAddComment?: (anchor: { from: number; to: number }) => void;
-}) {
+  onDirtyChange,
+  onSavingChange,
+}, ref) {
   const collaborationUser = useMemo(
     () =>
       me?.user
@@ -305,22 +334,36 @@ function DocumentEditorBody({
   const lastSavedRef = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  const persist = useCallback(() => {
-    if (!editor || !documentId) return;
-    const state = Y.encodeStateAsUpdate(ydoc);
-    const yjsBase64 =
-      typeof Buffer !== "undefined"
-        ? Buffer.from(state).toString("base64")
-        : btoa(String.fromCharCode(...state));
-    if (yjsBase64 === lastSavedRef.current) return;
-    const html = editor.getHTML() ?? "";
-    let contentMd: string;
-    try {
-      contentMd = turndown.turndown(html);
-    } catch {
-      contentMd = html;
-    }
-    updateContent.mutate(
+  const hasUnsavedChanges = dirty || markdownDirty;
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
+  useEffect(() => {
+    onSavingChange?.(updateContent.isPending);
+  }, [updateContent.isPending, onSavingChange]);
+
+  const persist = useCallback(
+    (overrideMd?: string) => {
+      if (!editor || !documentId) return;
+      const state = Y.encodeStateAsUpdate(ydoc);
+      const yjsBase64 =
+        typeof Buffer !== "undefined"
+          ? Buffer.from(state).toString("base64")
+          : btoa(String.fromCharCode(...state));
+      if (yjsBase64 === lastSavedRef.current) return;
+      // Store Markdown in DB: use raw markdown when provided (from markdown panel), else convert WYSIWYG HTML to MD
+      let contentMd: string;
+      if (overrideMd !== undefined) {
+        contentMd = overrideMd;
+      } else {
+        const html = editor.getHTML() ?? "";
+        try {
+          contentMd = turndown.turndown(html);
+        } catch {
+          contentMd = html;
+        }
+      }
+      updateContent.mutate(
       { documentId, contentYjs: yjsBase64, contentMd },
       {
         onSuccess: () => {
@@ -329,7 +372,9 @@ function DocumentEditorBody({
         },
       }
     );
-  }, [documentId, editor, ydoc, updateContent]);
+    },
+    [documentId, editor, ydoc, updateContent]
+  );
 
   useEffect(() => {
     if (!editor) return;
@@ -354,27 +399,41 @@ function DocumentEditorBody({
   const initialMdApplied = useRef(false);
   useEffect(() => {
     if (!editor || initialMdApplied.current) return;
-    if (hasInitialContent && initialMd && !initialYjsBase64) {
+    const applyMd = (md: string) => {
       try {
-        const trimmed = initialMd.trim();
-        const html = trimmed.startsWith("<") ? trimmed : (marked(initialMd) as string);
+        const trimmed = md.trim();
+        const html = trimmed.startsWith("<") ? trimmed : (marked(md) as string);
         editor.commands.setContent(html, false);
+        markdownSyncFromEditorRef.current = false;
+        setMarkdownValue(md);
+        setMarkdownDirty(false);
         initialMdApplied.current = true;
       } catch {
         initialMdApplied.current = true;
       }
+    };
+    if (hasInitialContent && initialMd && !initialYjsBase64) {
+      applyMd(initialMd);
+      return;
+    }
+    if (hasInitialContent && initialMd && initialYjsBase64 && fragment.length === 0) {
+      applyMd(initialMd);
       return;
     }
     if (!hasInitialContent && templateSlug && templateContent) {
       try {
         const html = marked(templateContent) as string;
         editor.commands.setContent(html, false);
+        const md = templateContent;
+        markdownSyncFromEditorRef.current = false;
+        setMarkdownValue(md);
+        setMarkdownDirty(false);
         initialMdApplied.current = true;
       } catch {
         initialMdApplied.current = true;
       }
     }
-  }, [editor, hasInitialContent, initialMd, initialYjsBase64, templateSlug, templateContent]);
+  }, [editor, hasInitialContent, initialMd, initialYjsBase64, templateSlug, templateContent, fragment.length]);
 
   useEffect(() => {
     if (!editor || !restoreContentMd) return;
@@ -388,7 +447,7 @@ function DocumentEditorBody({
       setMarkdownDirty(false);
       editor.commands.setContent(html, false);
       setDirty(true);
-      setTimeout(persist, 0);
+      setTimeout(() => persist(mdForPanel), 0);
     } catch {
       // ignore
     }
@@ -397,15 +456,20 @@ function DocumentEditorBody({
 
   useEffect(() => {
     if (!editor || mode === "wysiwyg") return;
-    if (markdownSyncFromEditorRef.current) {
-      try {
-        setMarkdownValue(turndown.turndown(editor.getHTML() ?? ""));
-        setMarkdownDirty(false);
-      } catch {
-        setMarkdownValue("");
+    const syncEditorToMarkdown = () => {
+      if (markdownSyncFromEditorRef.current) {
+        try {
+          setMarkdownValue(turndown.turndown(editor.getHTML() ?? ""));
+          setMarkdownDirty(false);
+        } catch {
+          setMarkdownValue("");
+        }
       }
-    }
-    markdownSyncFromEditorRef.current = true;
+      markdownSyncFromEditorRef.current = true;
+    };
+    syncEditorToMarkdown();
+    const t = setTimeout(syncEditorToMarkdown, 0);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ref and setters are stable
   }, [editor, mode]);
 
@@ -417,7 +481,8 @@ function DocumentEditorBody({
         markdownSyncFromEditorRef.current = false;
         editor.commands.setContent(html, false);
         setDirty(true);
-        persist();
+        // Save the raw markdown as-is so the user's formatting is preserved
+        persist(md);
       } catch {
         // ignore
       }
@@ -437,6 +502,17 @@ function DocumentEditorBody({
       setMarkdownDirty(false);
     }
   };
+
+  const save = useCallback(() => {
+    if (markdownDirty) {
+      applyMarkdownToEditor(markdownValue);
+      setMarkdownDirty(false);
+    } else {
+      persist();
+    }
+  }, [markdownDirty, markdownValue, applyMarkdownToEditor, persist]);
+
+  useImperativeHandle(ref, () => ({ save }), [save]);
 
   if (!editor) return null;
 
@@ -519,7 +595,7 @@ function DocumentEditorBody({
       </div>
     </div>
   );
-}
+});
 
 function EditorToolbar({
   editor,

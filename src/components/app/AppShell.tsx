@@ -9,6 +9,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { trpc } from "@/trpc/client";
 
+const EDITOR_PREFERENCE_KEY = "markflow-editor-preference";
+type EditorMode = "wysiwyg" | "markdown" | "split";
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
@@ -17,9 +20,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const supabase = createClient();
 
+  const utils = trpc.useUtils();
   const { data: me } = trpc.user.me.useQuery();
   const profile = me?.profile;
   const authUser = me?.user;
+  const updateProfile = trpc.user.updateProfile.useMutation({
+    onSuccess: () => utils.user.me.invalidate(),
+  });
+  const editorPref = (profile?.editor_preference as EditorMode) ?? "wysiwyg";
 
   useEffect(() => {
     const root = document.documentElement;
@@ -39,6 +47,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push("/");
     router.refresh();
   }
+
+  const setEditorPreference = useCallback(
+    (mode: EditorMode) => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(EDITOR_PREFERENCE_KEY, mode);
+      }
+      updateProfile.mutate({ editor_preference: mode });
+      setUserMenuOpen(false);
+    },
+    [updateProfile]
+  );
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -98,6 +117,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   >
                     Profile
                   </Link>
+                  <div className="border-b border-border px-3 py-2">
+                    <span className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                      Default editor
+                    </span>
+                    <div className="mt-1 flex gap-1">
+                      {(["wysiwyg", "markdown", "split"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setEditorPreference(m)}
+                          className={`rounded px-2 py-1 text-xs capitalize ${
+                            editorPref === m
+                              ? "bg-accent text-white"
+                              : "bg-bg text-text-muted hover:text-text"
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     className="w-full px-3 py-2 text-left text-sm text-text hover:bg-bg"

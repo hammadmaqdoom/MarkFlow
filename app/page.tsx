@@ -16,15 +16,17 @@ export default function Home() {
           sync. Tables, checklists, templates. Connect GitHub. Export for Claude.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+          {/* SIGNUP DISABLED - Uncomment when ready to enable signups
           <Link
             href="/signup"
             className="inline-flex h-11 items-center justify-center rounded-md bg-accent px-6 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
           >
             Get started
           </Link>
+          */}
           <Link
             href="/login"
-            className="inline-flex h-11 items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text hover:bg-bg focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
+            className="inline-flex h-11 items-center justify-center rounded-md bg-accent px-6 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2"
           >
             Sign in
           </Link>

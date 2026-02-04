@@ -12,6 +12,7 @@ export const documentUpdateSchema = z.object({
   name: z.string().min(1).max(512).optional(),
   path: z.string().min(1).max(1024).optional(),
   parentId: z.string().uuid().optional().nullable(),
+  visibleInShare: z.boolean().optional(),
 });
 
 export const documentUpdateContentSchema = z.object({

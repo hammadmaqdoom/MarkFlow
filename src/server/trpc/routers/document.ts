@@ -109,7 +109,8 @@ export const documentRouter = router({
       if (!data) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
       const row = data as unknown as Record<string, unknown>;
       if (input.includeContent && row.content_yjs) {
-        return { ...row, content_yjs_base64: Buffer.from(row.content_yjs as Buffer).toString("base64") };
+        const { content_yjs: _dropped, ...rest } = row;
+        return { ...rest, content_yjs_base64: Buffer.from(row.content_yjs as Buffer).toString("base64") };
       }
       return data;
     }),
@@ -169,6 +170,7 @@ export const documentRouter = router({
         ...(input.data.name !== undefined && { name: input.data.name }),
         path: newPath,
         ...(input.data.parentId !== undefined && { parent_id: input.data.parentId }),
+        ...(input.data.visibleInShare !== undefined && { visible_in_share: input.data.visibleInShare }),
       };
 
       const { data, error } = await ctx.supabase
@@ -205,6 +207,7 @@ export const documentRouter = router({
       if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
       if (doc.type === "folder") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot set content on folder" });
       await assertEditorProject(ctx, doc.project_id);
+      // Content is always stored as Markdown (content_md); WYSIWYG is converted to MD client-side
       const update: Record<string, unknown> = {};
       if (input.contentYjs !== undefined) {
         update.content_yjs = Buffer.from(input.contentYjs, "base64");

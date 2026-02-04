@@ -83,7 +83,7 @@ export const projectRouter = router({
       if (!input.includeTree) return project;
       const { data: docs } = await ctx.supabase
         .from("documents")
-        .select("id, project_id, parent_id, type, name, path, updated_at")
+        .select("id, project_id, parent_id, type, name, path, updated_at, visible_in_share")
         .eq("project_id", input.projectId)
         .order("path");
       return { ...project, documents: docs ?? [] };

@@ -24,7 +24,7 @@ function DocumentsSidebar({
   projectSlug: string;
   project: { id: string; name: string; slug: string; workspace_id: string };
   tree: TreeItem[];
-  documents: { id: string; parent_id: string | null; type: string; name: string; path: string }[];
+  documents: { id: string; parent_id: string | null; type: string; name: string; path: string; visible_in_share?: boolean }[];
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -45,7 +45,7 @@ function DocumentsSidebar({
           </svg>
         </button>
       ) : (
-        <aside className="no-print w-56 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
+        <aside className="no-print w-64 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-3 p-4 pb-0">
             <span className="text-xs font-medium uppercase tracking-wider text-text-muted">Documents</span>
             <NewDocFolderButtons
@@ -135,7 +135,7 @@ function ProjectLayoutInner({ children }: { children: React.ReactNode }) {
   }
   if (!project) return null;
 
-  const documents = "documents" in project ? ((project as { documents?: { id: string; parent_id: string | null; type: string; name: string; path: string }[] }).documents ?? []) : [];
+  const documents = "documents" in project ? ((project as { documents?: { id: string; parent_id: string | null; type: string; name: string; path: string; visible_in_share?: boolean }[] }).documents ?? []) : [];
   const tree = buildTree(documents);
 
   return (
@@ -187,6 +187,7 @@ type TreeItem = {
   type: string;
   name: string;
   path: string;
+  visible_in_share?: boolean;
   children: TreeItem[];
 };
 
