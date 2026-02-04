@@ -20,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import TurndownService from "turndown";
 import { gfm as turndownGfm } from "turndown-plugin-gfm";
 import { trpc } from "@/trpc/client";
+import { getDocumentLinkComponents } from "./DocumentLink";
 
 const PARTYKIT_URL = typeof process.env.NEXT_PUBLIC_PARTYKIT_URL === "string" ? process.env.NEXT_PUBLIC_PARTYKIT_URL : undefined;
 
@@ -579,7 +580,12 @@ const DocumentEditorBody = forwardRef<
                 spellCheck={false}
               />
               <div className="flex-1 min-w-0 overflow-auto px-4 py-3 prose prose-sm max-w-none text-text prose-p:my-2 prose-headings:my-3 prose-ul:my-2 prose-ol:my-2 prose-a:text-accent prose-a:no-underline hover:prose-a:underline">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownValue || " "}</ReactMarkdown>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={getDocumentLinkComponents()}
+                >
+                  {markdownValue || " "}
+                </ReactMarkdown>
               </div>
             </div>
           </div>

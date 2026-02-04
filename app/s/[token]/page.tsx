@@ -1,50 +1,167 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkToc from "remark-toc";
 import rehypeSlug from "rehype-slug";
 import type { Components } from "react-markdown";
+import { resolveDocPath, isInternalDocLink } from "@/lib/resolvePath";
 
 /** Merge class names; rehype-slug adds ids */
 function cn(...classes: (string | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
-/** Heading components: explicit size/weight so headings always stand out; scroll-margin for TOC */
-const markdownComponents: Components = {
-  h1: (props) => <h1 {...props} className={cn(props.className, "scroll-mt-4 mt-6 mb-3 text-2xl font-bold text-text")} />,
-  h2: (props) => <h2 {...props} className={cn(props.className, "scroll-mt-4 mt-6 mb-3 text-xl font-semibold text-text")} />,
-  h3: (props) => <h3 {...props} className={cn(props.className, "scroll-mt-4 mt-4 mb-2 text-lg font-semibold text-text")} />,
-  h4: (props) => <h4 {...props} className={cn(props.className, "scroll-mt-4 mt-4 mb-2 text-base font-semibold text-text")} />,
-  h5: (props) => <h5 {...props} className={cn(props.className, "scroll-mt-4 mt-3 mb-1.5 text-sm font-semibold text-text")} />,
-  h6: (props) => <h6 {...props} className={cn(props.className, "scroll-mt-4 mt-3 mb-1.5 text-sm font-semibold text-text-muted")} />,
-  a: ({ href, title, children, className, ...props }) => {
-    const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
-    const isAnchor = href?.startsWith("#");
-    const linkClass = cn(
-      className,
-      "transition-colors",
-      isAnchor ? "text-accent hover:underline cursor-pointer" : undefined,
-      isExternal ? "text-accent no-underline hover:underline" : undefined
-    );
+/** Context for share page internal links */
+interface ShareLinkContextValue {
+  currentFilePath: string;
+  files: ShareFile[];
+  onSelectFile: (fileId: string) => void;
+}
+const ShareLinkContext = createContext<ShareLinkContextValue | null>(null);
+
+/** Custom link component that handles internal links in share view */
+function ShareLinkComponent({
+  href,
+  title,
+  children,
+  className,
+  ...props
+}: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const ctx = useContext(ShareLinkContext);
+  
+  const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
+  const isAnchor = href?.startsWith("#");
+  const isInternal = href && isInternalDocLink(href);
+  
+  // Resolve internal links to find target file
+  const targetFile = useMemo(() => {
+    if (!isInternal || !href || !ctx) return null;
+    const resolvedPath = resolveDocPath(ctx.currentFilePath, href);
+    // Find file by path (exact match or with/without extension)
+    return ctx.files.find((f) => {
+      const filePath = f.path ?? f.name;
+      return (
+        filePath === resolvedPath ||
+        filePath === resolvedPath.replace(/\.md$/, "") ||
+        filePath.replace(/\.md$/, "") === resolvedPath.replace(/\.md$/, "")
+      );
+    });
+  }, [isInternal, href, ctx]);
+  
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (targetFile && ctx) {
+        e.preventDefault();
+        ctx.onSelectFile(targetFile.id);
+      }
+    },
+    [targetFile, ctx]
+  );
+  
+  const linkClass = cn(
+    className,
+    "transition-colors",
+    isAnchor ? "text-accent hover:underline cursor-pointer" : undefined,
+    isExternal ? "text-accent no-underline hover:underline" : undefined,
+    isInternal && targetFile ? "text-accent hover:underline cursor-pointer" : undefined,
+    isInternal && !targetFile && ctx ? "text-red-500 line-through cursor-not-allowed" : undefined
+  );
+  
+  // External link
+  if (isExternal) {
     return (
       <a
         href={href}
         title={title ?? undefined}
-        target={isExternal ? "_blank" : undefined}
-        rel={isExternal ? "noopener noreferrer" : undefined}
+        target="_blank"
+        rel="noopener noreferrer"
         className={linkClass}
         {...props}
       >
         {children}
       </a>
     );
-  },
-};
+  }
+  
+  // Internal link with target found
+  if (isInternal && targetFile && ctx) {
+    return (
+      <a
+        href="#"
+        onClick={handleClick}
+        title={title ?? `Open ${targetFile.name}`}
+        className={linkClass}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  }
+  
+  // Internal link with no target (broken link)
+  if (isInternal && ctx && !targetFile) {
+    const resolvedPath = href ? resolveDocPath(ctx.currentFilePath, href) : href;
+    return (
+      <span
+        className={linkClass}
+        title={`Document not found: ${resolvedPath}`}
+        {...props}
+      >
+        {children}
+      </span>
+    );
+  }
+  
+  // Anchor or fallback
+  return (
+    <a
+      href={href}
+      title={title ?? undefined}
+      className={linkClass}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
+
+/** Heading components: explicit size/weight so headings always stand out; scroll-margin for TOC */
+function getMarkdownComponents(useShareLinks: boolean): Components {
+  return {
+    h1: (props) => <h1 {...props} className={cn(props.className, "scroll-mt-4 mt-6 mb-3 text-2xl font-bold text-text")} />,
+    h2: (props) => <h2 {...props} className={cn(props.className, "scroll-mt-4 mt-6 mb-3 text-xl font-semibold text-text")} />,
+    h3: (props) => <h3 {...props} className={cn(props.className, "scroll-mt-4 mt-4 mb-2 text-lg font-semibold text-text")} />,
+    h4: (props) => <h4 {...props} className={cn(props.className, "scroll-mt-4 mt-4 mb-2 text-base font-semibold text-text")} />,
+    h5: (props) => <h5 {...props} className={cn(props.className, "scroll-mt-4 mt-3 mb-1.5 text-sm font-semibold text-text")} />,
+    h6: (props) => <h6 {...props} className={cn(props.className, "scroll-mt-4 mt-3 mb-1.5 text-sm font-semibold text-text-muted")} />,
+    a: useShareLinks ? ShareLinkComponent as Components["a"] : ({ href, title, children, className, ...props }) => {
+      const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
+      const isAnchor = href?.startsWith("#");
+      const linkClass = cn(
+        className,
+        "transition-colors",
+        isAnchor ? "text-accent hover:underline cursor-pointer" : undefined,
+        isExternal ? "text-accent no-underline hover:underline" : undefined
+      );
+      return (
+        <a
+          href={href}
+          title={title ?? undefined}
+          target={isExternal ? "_blank" : undefined}
+          rel={isExternal ? "noopener noreferrer" : undefined}
+          className={linkClass}
+          {...props}
+        >
+          {children}
+        </a>
+      );
+    },
+  };
+}
 
 type ShareFile = { id: string; name: string; path?: string; content_md: string };
 type ShareDoc =
@@ -53,7 +170,15 @@ type ShareDoc =
   | { type: "project"; id: string; name: string; children: ShareFile[] };
 
 /** Renders content: legacy HTML (starts with <) as raw HTML; otherwise as markdown via react-markdown */
-function MarkdownContent({ content, className }: { content: string; className?: string }) {
+function MarkdownContent({
+  content,
+  className,
+  useShareLinks = false,
+}: {
+  content: string;
+  className?: string;
+  useShareLinks?: boolean;
+}) {
   const trimmed = content.trim();
   if (trimmed.startsWith("<")) {
     return <div className={className} dangerouslySetInnerHTML={{ __html: trimmed }} />;
@@ -63,7 +188,7 @@ function MarkdownContent({ content, className }: { content: string; className?: 
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkToc]}
         rehypePlugins={[rehypeSlug]}
-        components={markdownComponents}
+        components={getMarkdownComponents(useShareLinks)}
       >
         {content}
       </ReactMarkdown>
@@ -250,6 +375,13 @@ export default function SharePage() {
     const files = doc.children;
     const selectedFile =
       files.find((f) => f.id === selectedFileId) ?? files[0] ?? null;
+    
+    // Context value for internal link resolution
+    const shareLinkContextValue: ShareLinkContextValue = {
+      currentFilePath: selectedFile?.path ?? selectedFile?.name ?? "",
+      files,
+      onSelectFile: setSelectedFileId,
+    };
 
     function renderTreeNodes(nodes: ShareTreeNode[], depth: number) {
       return nodes.map((node) => {
@@ -318,12 +450,18 @@ export default function SharePage() {
           </aside>
           <main className="flex-1 min-w-0 overflow-auto">
             {selectedFile ? (
-              <div className="max-w-3xl mx-auto px-6 py-6">
-                <h2 className="text-lg font-semibold text-text mb-4 scroll-mt-4">
-                  {selectedFile.name}
-                </h2>
-                <MarkdownContent content={selectedFile.content_md ?? ""} className={proseClass} />
-              </div>
+              <ShareLinkContext.Provider value={shareLinkContextValue}>
+                <div className="max-w-3xl mx-auto px-6 py-6">
+                  <h2 className="text-lg font-semibold text-text mb-4 scroll-mt-4">
+                    {selectedFile.name}
+                  </h2>
+                  <MarkdownContent
+                    content={selectedFile.content_md ?? ""}
+                    className={proseClass}
+                    useShareLinks
+                  />
+                </div>
+              </ShareLinkContext.Provider>
             ) : (
               <div className="flex items-center justify-center h-full text-text-muted">
                 Select a file

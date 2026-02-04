@@ -5,6 +5,7 @@ import { addRecentDoc } from "@/components/app/QuickSwitcher";
 import { CommentsPanel } from "@/components/app/CommentsPanel";
 import { ShareModal } from "@/components/app/ShareModal";
 import { VersionHistoryPanel } from "@/components/app/VersionHistoryPanel";
+import { DocumentLinkProvider } from "@/components/editor/DocumentLink";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
@@ -85,6 +86,8 @@ export default function DocumentPage() {
   const docMeta = doc as unknown as {
     id: string;
     name: string;
+    path: string;
+    project_id: string;
     content_yjs_base64?: string;
     content_md?: string | null;
     template_slug?: string | null;
@@ -147,22 +150,29 @@ export default function DocumentPage() {
         </div>
       </div>
       <div className="flex-1 overflow-auto p-6">
-        <DocumentEditorLazy
-          key={documentId}
-          ref={editorRef}
-          documentId={documentId}
-          initialYjsBase64={docMeta.content_yjs_base64 ?? null}
-          initialMd={docMeta.content_md ?? null}
-          templateSlug={docMeta.template_slug ?? null}
-          restoreContentMd={restoreContentMd}
-          onRestoreApplied={() => setRestoreContentMd(null)}
-          onDirtyChange={setEditorDirty}
-          onSavingChange={setEditorSaving}
-          onAddComment={(anchor) => {
-            setPendingCommentAnchor(anchor);
-            setCommentsOpen(true);
-          }}
-        />
+        <DocumentLinkProvider
+          currentPath={docMeta.path}
+          projectId={docMeta.project_id}
+          workspaceSlug={workspaceSlug}
+          projectSlug={projectSlug}
+        >
+          <DocumentEditorLazy
+            key={documentId}
+            ref={editorRef}
+            documentId={documentId}
+            initialYjsBase64={docMeta.content_yjs_base64 ?? null}
+            initialMd={docMeta.content_md ?? null}
+            templateSlug={docMeta.template_slug ?? null}
+            restoreContentMd={restoreContentMd}
+            onRestoreApplied={() => setRestoreContentMd(null)}
+            onDirtyChange={setEditorDirty}
+            onSavingChange={setEditorSaving}
+            onAddComment={(anchor) => {
+              setPendingCommentAnchor(anchor);
+              setCommentsOpen(true);
+            }}
+          />
+        </DocumentLinkProvider>
       </div>
       <CommentsPanel
         documentId={documentId}
