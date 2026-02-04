@@ -83,9 +83,11 @@ export function DocumentLinkComponent({
     }
   );
 
-  // Build the internal URL
+  // Build the internal URL - check that targetDoc is valid (has id property)
   const internalUrl = useMemo(() => {
     if (!targetDoc || !ctx) return null;
+    // Type guard: ensure targetDoc has an id (not an error response)
+    if (!("id" in targetDoc) || typeof targetDoc.id !== "string") return null;
     return `/w/${ctx.workspaceSlug}/p/${ctx.projectSlug}/doc/${targetDoc.id}`;
   }, [targetDoc, ctx]);
 
