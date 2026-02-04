@@ -18,7 +18,6 @@ const DocumentEditorLazy = dynamic(
     })),
   {
     ssr: false,
-    forwardRef: true,
     loading: () => (
       <div className="rounded border border-border bg-surface p-8 min-h-[200px] flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
