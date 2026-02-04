@@ -256,6 +256,7 @@ export default function SharePage() {
   const [needPassword, setNeedPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [filesDrawerOpen, setFilesDrawerOpen] = useState(false);
 
   const fetchDoc = async (pwd?: string) => {
     if (!token) return;
@@ -405,7 +406,10 @@ export default function SharePage() {
           <li key={file.id}>
             <button
               type="button"
-              onClick={() => setSelectedFileId(file.id)}
+              onClick={() => {
+                setSelectedFileId(file.id);
+                setFilesDrawerOpen(false);
+              }}
               className={`w-full text-left py-2 text-sm rounded-md truncate transition-colors ${
                 selectedFileId === file.id
                   ? "bg-accent/15 text-accent font-medium"
@@ -422,21 +426,47 @@ export default function SharePage() {
 
     return (
       <div className="min-h-screen bg-bg text-text flex flex-col">
-        <header className="shrink-0 border-b border-border bg-surface px-4 py-3 flex items-center justify-between gap-4">
-          <h1 className="text-lg font-semibold text-text truncate">{doc.name}</h1>
-          <Link
-            href="/"
-            className="shrink-0 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-bg"
+        <header className="shrink-0 border-b border-border bg-surface px-4 py-3 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setFilesDrawerOpen(true)}
+            className="md:hidden shrink-0 p-2 -ml-2 rounded-md text-text hover:bg-bg"
+            aria-label="Open files"
           >
-            Open in MarkFlow
-          </Link>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 className="text-lg font-semibold text-text truncate min-w-0 flex-1">{doc.name}</h1>
         </header>
-        <div className="flex-1 flex min-h-0">
-          <aside className="shrink-0 w-56 border-r border-border bg-surface flex flex-col">
-            <div className="px-3 py-2 border-b border-border">
+        <div className="flex-1 flex min-h-0 relative">
+          {/* Mobile backdrop */}
+          <button
+            type="button"
+            aria-label="Close files"
+            className={`md:hidden fixed inset-0 z-30 bg-black/50 transition-opacity ${filesDrawerOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            onClick={() => setFilesDrawerOpen(false)}
+          />
+          {/* Sidebar: drawer on mobile, fixed sidebar on md+ */}
+          <aside
+            className={`shrink-0 w-56 max-w-[85vw] md:max-w-none border-r border-border bg-surface flex flex-col flex-1 md:flex-initial fixed md:relative inset-y-0 left-0 z-40 md:z-auto h-full md:h-auto transition-transform duration-200 ease-out ${
+              filesDrawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+            }`}
+          >
+            <div className="px-3 py-2 border-b border-border flex items-center justify-between">
               <span className="text-xs font-medium text-text-muted uppercase tracking-wider">
                 Files
               </span>
+              <button
+                type="button"
+                onClick={() => setFilesDrawerOpen(false)}
+                className="md:hidden p-2 -mr-2 rounded-md text-text-muted hover:bg-bg hover:text-text"
+                aria-label="Close"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
             <nav className="flex-1 overflow-y-auto py-2">
               {files.length === 0 ? (
@@ -448,11 +478,11 @@ export default function SharePage() {
               )}
             </nav>
           </aside>
-          <main className="flex-1 min-w-0 overflow-auto">
+          <main className="flex-1 min-w-0 overflow-auto w-full">
             {selectedFile ? (
               <ShareLinkContext.Provider value={shareLinkContextValue}>
-                <div className="max-w-3xl mx-auto px-6 py-6">
-                  <h2 className="text-lg font-semibold text-text mb-4 scroll-mt-4">
+                <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+                  <h2 className="text-base sm:text-lg font-semibold text-text mb-4 scroll-mt-4">
                     {selectedFile.name}
                   </h2>
                   <MarkdownContent
@@ -463,8 +493,15 @@ export default function SharePage() {
                 </div>
               </ShareLinkContext.Provider>
             ) : (
-              <div className="flex items-center justify-center h-full text-text-muted">
-                Select a file
+              <div className="flex items-center justify-center h-full text-text-muted px-4">
+                <button
+                  type="button"
+                  onClick={() => setFilesDrawerOpen(true)}
+                  className="md:hidden text-accent hover:underline"
+                >
+                  Select a file
+                </button>
+                <span className="hidden md:inline">Select a file</span>
               </div>
             )}
           </main>
@@ -475,18 +512,12 @@ export default function SharePage() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <div className="border-b border-border bg-surface px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
+      <div className="border-b border-border bg-surface px-4 sm:px-6 py-4">
+        <div className="max-w-3xl mx-auto">
           <h1 className="text-xl font-semibold text-text">{doc.name}</h1>
-          <Link
-            href="/"
-            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-bg"
-          >
-            Open in MarkFlow
-          </Link>
         </div>
       </div>
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <MarkdownContent content={doc.content_md ?? ""} className={proseClass} />
       </div>
     </div>
