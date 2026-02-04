@@ -408,10 +408,21 @@ const DocumentEditorBody = forwardRef<
     const applyMd = (md: string) => {
       try {
         const trimmed = md.trim();
-        const html = trimmed.startsWith("<") ? trimmed : (marked(md) as string);
+        const isHtml = trimmed.startsWith("<");
+        const html = isHtml ? trimmed : (marked(md) as string);
         editor.commands.setContent(html, false);
         markdownSyncFromEditorRef.current = false;
-        setMarkdownValue(md);
+        // Show raw markdown in the markdown panel: convert HTML to markdown when content is legacy HTML
+        const mdForPanel = isHtml
+          ? (() => {
+              try {
+                return turndown.turndown(trimmed);
+              } catch {
+                return trimmed;
+              }
+            })()
+          : md;
+        setMarkdownValue(mdForPanel);
         setMarkdownDirty(false);
         initialMdApplied.current = true;
       } catch {
@@ -539,12 +550,16 @@ const DocumentEditorBody = forwardRef<
   return (
     <div className="rounded border border-border bg-surface flex flex-col">
       <div className="no-print flex items-center gap-1 border-b border-border px-2 py-1.5 flex-wrap">
-        <EditorToolbar
-          editor={editor}
-          selectionRange={selectionRange}
-          onAddComment={onAddComment}
-        />
-        <div className="ml-auto flex items-center gap-1 border-l border-border pl-2">
+        {mode === "wysiwyg" && (
+          <EditorToolbar
+            editor={editor}
+            selectionRange={selectionRange}
+            onAddComment={onAddComment}
+          />
+        )}
+        <div
+          className={`ml-auto flex items-center gap-1 ${mode === "wysiwyg" ? "border-l border-border pl-2" : ""}`}
+        >
           {(["wysiwyg", "markdown"] as const).map((m) => (
             <button
               key={m}
