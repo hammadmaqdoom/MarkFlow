@@ -17,4 +17,13 @@ export type MarkflowMcpCaller = {
       name: string;
     }) => Promise<{ id: string }>;
   };
+  documentation: {
+    listGeneratedDocuments: (x: { projectId: string }) => Promise<unknown>;
+    getConfiguredProviders: () => Promise<("openai" | "anthropic" | "google")[]>;
+    generate: (x: {
+      projectId: string;
+      provider: "openai" | "anthropic" | "google";
+      departments?: ("compliance" | "product" | "design" | "marketing" | "technical")[];
+    }) => Promise<unknown>;
+  };
 };

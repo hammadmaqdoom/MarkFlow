@@ -55,6 +55,11 @@ async function handleMcpRequest(request: Request): Promise<Response> {
       updateContent: (x) => trpcCaller.document.updateContent(x),
       create: (x) => trpcCaller.document.create(x),
     },
+    documentation: {
+      listGeneratedDocuments: (x) => trpcCaller.documentation.listGeneratedDocuments(x),
+      getConfiguredProviders: () => trpcCaller.documentation.getConfiguredProviders(),
+      generate: (x) => trpcCaller.documentation.generate(x),
+    },
   };
 
   const server = new McpServer(

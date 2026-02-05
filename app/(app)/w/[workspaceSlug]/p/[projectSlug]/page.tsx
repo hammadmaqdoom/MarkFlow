@@ -35,6 +35,12 @@ export default function ProjectPage() {
       <div className="flex items-center justify-between gap-4 mb-1">
         <h1 className="text-2xl font-semibold text-text">{project.name}</h1>
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href={`/w/${workspaceSlug}/p/${projectSlug}/docs-setup`}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text hover:bg-bg"
+          >
+            Setup AI docs
+          </Link>
           <button
             type="button"
             onClick={() => setShareOpen(true)}

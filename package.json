@@ -17,6 +17,8 @@
     "mcp": "tsx scripts/mcp-server.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.1",
+    "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
@@ -43,6 +45,7 @@
     "lowlight": "^2.0.0",
     "marked": "^17.0.1",
     "next": "14.2.18",
+    "openai": "^6.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
