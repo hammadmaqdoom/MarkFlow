@@ -121,12 +121,51 @@ export const workspaceRouter = router({
   listMembers: protectedProcedure
     .input(z.object({ workspaceId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      const { data, error } = await ctx.supabase
+      const { data: ws, error: wsErr } = await ctx.supabase
+        .from("workspaces")
+        .select("owner_id")
+        .eq("id", input.workspaceId)
+        .single();
+      if (wsErr || !ws) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: wsErr?.message ?? "Workspace not found" });
+
+      const { data: members, error } = await ctx.supabase
         .from("workspace_members")
         .select("*, profiles:user_id(id, email, full_name, avatar_url)")
         .eq("workspace_id", input.workspaceId);
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
-      return data ?? [];
+
+      const { data: ownerProfile } = await ctx.supabase
+        .from("profiles")
+        .select("id, email, full_name, avatar_url")
+        .eq("id", ws.owner_id)
+        .single();
+
+      const memberRows = (members ?? []) as Array<{
+        user_id: string;
+        role: string;
+        profiles: { id: string; email: string | null; full_name: string | null; avatar_url: string | null } | null;
+      }>;
+      const byUserId = new Map(
+        memberRows.map((m) => [
+          m.user_id,
+          { ...m, role: m.role as "owner" | "admin" | "editor" | "viewer" },
+        ])
+      );
+
+      type MemberWithProfile = {
+        user_id: string;
+        role: "owner" | "admin" | "editor" | "viewer";
+        profiles: { id: string; email: string | null; full_name: string | null; avatar_url: string | null } | null;
+      };
+      const ownerEntry: MemberWithProfile = {
+        user_id: ws.owner_id,
+        role: "owner",
+        profiles: ownerProfile ?? { id: ws.owner_id, email: null, full_name: null, avatar_url: null },
+      };
+      const rest: MemberWithProfile[] = memberRows
+        .filter((m) => m.user_id !== ws.owner_id)
+        .map((m) => ({ ...m, role: m.role as "owner" | "admin" | "editor" | "viewer" }));
+      return [ownerEntry, ...rest] as MemberWithProfile[];
     }),
 
   inviteMember: protectedProcedure

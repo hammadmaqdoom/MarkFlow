@@ -45,9 +45,12 @@ auth.users (Supabase managed)
        ▼                                                       ▼
   workspaces ◄──────────────────────────── workspace_members
        │
+       │ workspace_id        workspace_id
+       ├──────────────────► teams ◄────── team_members (user_id → profiles)
+       │
        │ workspace_id
        ▼
-  projects
+  projects ◄──────────────────────────── project_workspace_grants (grants project to another workspace: view | edit)
        │
        │ project_id
        ▼
@@ -241,7 +244,69 @@ CREATE TABLE public.workspace_members (
 
 ---
 
-### 4.2 `document_versions` (optional, for history/backup)
+### 4.2 `teams`
+
+Subgroups within a workspace; each team has its own members (who must be workspace members).
+
+```sql
+CREATE TABLE public.teams (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(workspace_id, slug)
+);
+```
+
+**RLS:** Workspace members can SELECT; workspace owner/admin can INSERT/UPDATE/DELETE.
+
+---
+
+### 4.3 `team_members`
+
+Many-to-many: users ↔ teams with role (lead | member). Users must already be workspace members (enforced in app).
+
+```sql
+CREATE TYPE public.team_role AS ENUM ('lead', 'member');
+
+CREATE TABLE public.team_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id UUID NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  role public.team_role NOT NULL DEFAULT 'member',
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(team_id, user_id)
+);
+```
+
+**RLS:** Workspace members can SELECT; workspace owner/admin or team lead can INSERT/UPDATE/DELETE.
+
+---
+
+### 4.4 `project_workspace_grants`
+
+Cross-workspace sharing: grant a project to another workspace with view or edit role. Document access is derived from project (granted workspace members see project and documents; edit grant allows write).
+
+```sql
+CREATE TABLE public.project_workspace_grants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('view', 'edit')),
+  granted_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  UNIQUE(project_id, workspace_id)
+);
+```
+
+**Rules:** No self-grant (project’s workspace ≠ granted workspace); enforced by trigger or app. **RLS:** INSERT by project owner/admin/editor; SELECT by project members and by granted workspace members; DELETE by project owner/admin or granter. **projects / documents:** Additional RLS policies allow SELECT (and write for documents when grant role is edit) for users whose workspace has a grant on the project. **document_comments:** Granted workspace members (view grant: read; edit grant: read + add) can view/add comments.
+
+---
+
+### 4.5 `document_versions` (optional, for history/backup)
 
 Snapshot or incremental history for documents. MVP can omit; add when implementing “version history”.
 

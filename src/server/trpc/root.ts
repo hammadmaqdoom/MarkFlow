@@ -3,9 +3,11 @@ import { commentRouter } from "./routers/comment";
 import { documentRouter } from "./routers/document";
 import { documentationRouter } from "./routers/documentation";
 import { githubRouter } from "./routers/github";
+import { projectGrantRouter } from "./routers/projectGrant";
 import { projectRouter } from "./routers/project";
 import { projectSpecRouter } from "./routers/projectSpec";
 import { shareLinkRouter } from "./routers/shareLink";
+import { teamRouter } from "./routers/team";
 import { templateRouter } from "./routers/template";
 import { userRouter } from "./routers/user";
 import { workspaceRouter } from "./routers/workspace";
@@ -14,6 +16,7 @@ export const appRouter = router({
   user: userRouter,
   workspace: workspaceRouter,
   project: projectRouter,
+  projectGrant: projectGrantRouter,
   document: documentRouter,
   documentation: documentationRouter,
   projectSpec: projectSpecRouter,
@@ -21,6 +24,7 @@ export const appRouter = router({
   template: templateRouter,
   github: githubRouter,
   shareLink: shareLinkRouter,
+  team: teamRouter,
 });
 
 export type AppRouter = typeof appRouter;

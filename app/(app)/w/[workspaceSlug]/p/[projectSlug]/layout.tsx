@@ -11,6 +11,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { trpc } from "@/trpc/client";
 import { DocumentTree } from "@/components/app/DocumentTree";
+import { ShareWithWorkspaceModal } from "@/components/app/ShareWithWorkspaceModal";
 
 function DocumentsSidebar({
   workspaceSlug,
@@ -29,10 +30,17 @@ function DocumentsSidebar({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
+  const [shareWithWorkspaceOpen, setShareWithWorkspaceOpen] = useState(false);
   const workspace = useWorkspace();
   if (!workspace) return <div className="flex h-full flex-1 min-w-0 overflow-auto">{children}</div>;
   return (
     <div className="flex h-full">
+      <ShareWithWorkspaceModal
+        projectId={project.id}
+        currentWorkspaceId={project.workspace_id}
+        open={shareWithWorkspaceOpen}
+        onClose={() => setShareWithWorkspaceOpen(false)}
+      />
       {collapsed ? (
         <button
           type="button"
@@ -57,6 +65,13 @@ function DocumentsSidebar({
             />
           </div>
           <div className="flex-1 overflow-y-auto p-4 min-h-0">
+            <button
+              type="button"
+              onClick={() => setShareWithWorkspaceOpen(true)}
+              className="w-full mb-3 rounded-md border border-border bg-surface px-3 py-2 text-xs font-medium text-text hover:bg-bg"
+            >
+              Share with workspace
+            </button>
             <ExportButton projectId={project.id} projectSlug={projectSlug} workspaceSlug={workspaceSlug} />
             <GitHubSettings
               projectId={project.id}
