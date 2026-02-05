@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { MarkflowMcpCaller } from "./caller-type";
 
 export const MCP_INSTRUCTIONS =
-  "Markflow MCP: list workspaces and projects, list/read/write documents. Use list_workspaces first, then list_projects(workspaceId), then list_documents(projectId) or read_document/document paths. Write with write_document(documentId, contentMd) or create_document(projectId, name, contentMd). For AI-generated docs: list_generated_documents(projectId) lists docs under Compliance/, Product/, Design/, Marketing/, Technical/. generate_documentation(projectId, provider?, departments?) triggers AI doc generation; generated docs are normal documents (read/write with existing tools).";
+  "Markflow MCP: list workspaces and projects, list/read/write documents. Use list_workspaces first, then list_projects(workspaceId), then list_documents(projectId) or read_document/document paths. Write with write_document(documentId, contentMd) or create_document(projectId, name, contentMd). For AI-generated docs: list_generated_documents(projectId) lists docs under Compliance/, Product/, Design/, Marketing/, Technical/. generate_documentation(projectId, provider?, domains?) triggers AI doc generation; generated docs are normal documents (read/write with existing tools).";
 
 type McpServerLike = {
   tool(
@@ -140,12 +140,12 @@ export function registerMarkflowTools(server: McpServerLike, caller: MarkflowMcp
     {
       projectId: z.string().uuid().describe("Project UUID from list_projects"),
       provider: z.enum(["openai", "anthropic", "google"]).optional().describe("AI provider (default: first configured)"),
-      departments: z.array(z.enum(["compliance", "product", "design", "marketing", "technical"])).optional().describe("Departments to generate (default: all)"),
+      domains: z.array(z.enum(["compliance", "product", "design", "marketing", "technical"])).optional().describe("Domains to generate (default: all)"),
     },
     async (args: Record<string, unknown>) => {
       const projectId = args.projectId as string;
       const provider = args.provider as "openai" | "anthropic" | "google" | undefined;
-      const departments = args.departments as ("compliance" | "product" | "design" | "marketing" | "technical")[] | undefined;
+      const domains = args.domains as ("compliance" | "product" | "design" | "marketing" | "technical")[] | undefined;
       const configured = await caller.documentation.getConfiguredProviders();
       const providers = Array.isArray(configured) ? configured : [];
       const chosenProvider = provider ?? (providers[0] as "openai" | "anthropic" | "google" | undefined);
@@ -157,7 +157,7 @@ export function registerMarkflowTools(server: McpServerLike, caller: MarkflowMcp
       const result = await caller.documentation.generate({
         projectId,
         provider: chosenProvider,
-        departments: departments && departments.length > 0 ? departments : undefined,
+        domains: domains && domains.length > 0 ? domains : undefined,
       });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }

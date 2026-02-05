@@ -1,9 +1,9 @@
 /**
- * Department-based doc generation schema.
+ * Domain-based doc generation schema.
  * Used by the AI orchestrator and frontend (wizard, tree).
  */
 
-export const DEPARTMENT_IDS = [
+export const DOMAIN_IDS = [
   "compliance",
   "product",
   "design",
@@ -11,10 +11,10 @@ export const DEPARTMENT_IDS = [
   "technical",
 ] as const;
 
-export type DepartmentId = (typeof DEPARTMENT_IDS)[number];
+export type DomainId = (typeof DOMAIN_IDS)[number];
 
-/** Display label for each department (folder name in tree) */
-export const DEPARTMENT_LABELS: Record<DepartmentId, string> = {
+/** Display label for each domain (folder name in tree) */
+export const DOMAIN_LABELS: Record<DomainId, string> = {
   compliance: "Compliance",
   product: "Product",
   design: "Design",
@@ -22,8 +22,8 @@ export const DEPARTMENT_LABELS: Record<DepartmentId, string> = {
   technical: "Technical",
 };
 
-/** Document slugs (file names) per department. Order = generation order. */
-export const DEPARTMENT_DOCUMENTS: Record<DepartmentId, readonly string[]> = {
+/** Document slugs (file names) per domain. Order = generation order. */
+export const DOMAIN_DOCUMENTS: Record<DomainId, readonly string[]> = {
   compliance: ["compliance-overview.md"],
   product: [
     "competitive-landscape.md",
@@ -55,17 +55,17 @@ export const DEPARTMENT_DOCUMENTS: Record<DepartmentId, readonly string[]> = {
 };
 
 /** Folder name for document tree (same as label; used as path segment) */
-export function getDepartmentFolderName(id: DepartmentId): string {
-  return DEPARTMENT_LABELS[id];
+export function getDomainFolderName(id: DomainId): string {
+  return DOMAIN_LABELS[id];
 }
 
-/** All doc slugs for a department */
-export function getDepartmentDocSlugs(id: DepartmentId): readonly string[] {
-  return DEPARTMENT_DOCUMENTS[id];
+/** All doc slugs for a domain */
+export function getDomainDocSlugs(id: DomainId): readonly string[] {
+  return DOMAIN_DOCUMENTS[id];
 }
 
 /** Path prefix for "generated" docs (for MCP filter). E.g. "Compliance/", "Product/" */
-export const DEPARTMENT_PATH_PREFIXES: Record<DepartmentId, string> = {
+export const DOMAIN_PATH_PREFIXES: Record<DomainId, string> = {
   compliance: "Compliance/",
   product: "Product/",
   design: "Design/",
@@ -73,6 +73,6 @@ export const DEPARTMENT_PATH_PREFIXES: Record<DepartmentId, string> = {
   technical: "Technical/",
 };
 
-export function isDepartmentId(s: string): s is DepartmentId {
-  return DEPARTMENT_IDS.includes(s as DepartmentId);
+export function isDomainId(s: string): s is DomainId {
+  return DOMAIN_IDS.includes(s as DomainId);
 }

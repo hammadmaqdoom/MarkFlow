@@ -23,7 +23,7 @@ export type MarkflowMcpCaller = {
     generate: (x: {
       projectId: string;
       provider: "openai" | "anthropic" | "google";
-      departments?: ("compliance" | "product" | "design" | "marketing" | "technical")[];
+      domains?: ("compliance" | "product" | "design" | "marketing" | "technical")[];
     }) => Promise<unknown>;
   };
 };

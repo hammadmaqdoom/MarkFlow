@@ -1,8 +1,8 @@
--- project_specs: one row per project, stores concept input and optional department overrides for AI doc generation
+-- project_specs: one row per project, stores concept input and optional domain overrides for AI doc generation
 CREATE TABLE public.project_specs (
   project_id UUID PRIMARY KEY REFERENCES public.projects(id) ON DELETE CASCADE,
   concept_input JSONB NOT NULL DEFAULT '{}',
-  department_overrides JSONB DEFAULT '{}',
+  domain_overrides JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );

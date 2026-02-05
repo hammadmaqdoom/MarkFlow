@@ -1,9 +1,9 @@
 /**
- * Department IDs and labels for AI doc generation wizard (client-safe).
- * Keep in sync with src/server/lib/departments.ts for doc slugs.
+ * Domain IDs and labels for AI doc generation wizard (client-safe).
+ * Keep in sync with src/server/lib/domains.ts for doc slugs.
  */
 
-export const DEPARTMENT_IDS = [
+export const DOMAIN_IDS = [
   "compliance",
   "product",
   "design",
@@ -11,9 +11,9 @@ export const DEPARTMENT_IDS = [
   "technical",
 ] as const;
 
-export type DepartmentId = (typeof DEPARTMENT_IDS)[number];
+export type DomainId = (typeof DOMAIN_IDS)[number];
 
-export const DEPARTMENT_LABELS: Record<DepartmentId, string> = {
+export const DOMAIN_LABELS: Record<DomainId, string> = {
   compliance: "Compliance",
   product: "Product",
   design: "Design",

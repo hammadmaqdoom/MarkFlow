@@ -3,12 +3,12 @@
 import { Button, Input, Label } from "@/components/ui";
 import { useProject } from "@/contexts/ProjectContext";
 import {
-  DEPARTMENT_IDS,
-  DEPARTMENT_LABELS,
+  DOMAIN_IDS,
+  DOMAIN_LABELS,
   AI_PROVIDER_LABELS,
-  type DepartmentId,
+  type DomainId,
   type AiProviderId,
-} from "@/lib/departments";
+} from "@/lib/domains";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -28,7 +28,7 @@ export default function DocsSetupPage() {
   const [audience, setAudience] = useState("");
   const [goals, setGoals] = useState("");
   const [context, setContext] = useState("");
-  const [departments, setDepartments] = useState<DepartmentId[]>([...DEPARTMENT_IDS]);
+  const [domains, setDomains] = useState<DomainId[]>([...DOMAIN_IDS]);
   const [provider, setProvider] = useState<AiProviderId>("openai");
 
   const { data: spec, isLoading: specLoading } = trpc.projectSpec.get.useQuery(
@@ -67,19 +67,19 @@ export default function DocsSetupPage() {
     await upsertSpec.mutateAsync({
       projectId: project.id,
       conceptInput: { idea, audience, goals, context },
-      departmentOverrides: {},
+      domainOverrides: {},
     });
     setStep(2);
   };
 
-  const toggleDepartment = (id: DepartmentId) => {
-    setDepartments((prev) =>
+  const toggleDomain = (id: DomainId) => {
+    setDomains((prev) =>
       prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
     );
   };
 
-  const handleSelectAllDepartments = () => {
-    setDepartments([...DEPARTMENT_IDS]);
+  const handleSelectAllDomains = () => {
+    setDomains([...DOMAIN_IDS]);
   };
 
   const handleGenerate = async () => {
@@ -87,7 +87,7 @@ export default function DocsSetupPage() {
     await generateDocs.mutateAsync({
       projectId: project.id,
       provider,
-      departments: departments.length > 0 ? departments : undefined,
+      domains: domains.length > 0 ? domains : undefined,
     });
   };
 
@@ -109,7 +109,7 @@ export default function DocsSetupPage() {
           AI documentation setup
         </h1>
         <p className="text-text-muted text-sm mt-1">
-          Describe your project concept; we’ll generate docs by department.
+          Describe your project concept; we’ll generate docs by domain.
         </p>
       </div>
 
@@ -162,7 +162,7 @@ export default function DocsSetupPage() {
               onClick={handleNextFromConcept}
               disabled={upsertSpec.isPending || !idea.trim()}
             >
-              {upsertSpec.isPending ? "Saving…" : "Next: Choose departments"}
+              {upsertSpec.isPending ? "Saving…" : "Next: Choose domains"}
             </Button>
           </div>
         </div>
@@ -171,27 +171,27 @@ export default function DocsSetupPage() {
       {step === 2 && (
         <div className="space-y-4">
           <p className="text-text-muted text-sm">
-            Select which departments to generate. Default: all.
+            Select which domains to generate. Default: all.
           </p>
           <button
             type="button"
-            onClick={handleSelectAllDepartments}
+            onClick={handleSelectAllDomains}
             className="text-sm text-accent hover:underline"
           >
             Select all
           </button>
           <ul className="space-y-2">
-            {DEPARTMENT_IDS.map((id) => (
+            {DOMAIN_IDS.map((id) => (
               <li key={id} className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id={`dept-${id}`}
-                  checked={departments.includes(id)}
-                  onChange={() => toggleDepartment(id)}
+                  id={`domain-${id}`}
+                  checked={domains.includes(id)}
+                  onChange={() => toggleDomain(id)}
                   className="rounded border-border text-accent focus:ring-accent"
                 />
-                <label htmlFor={`dept-${id}`} className="text-text">
-                  {DEPARTMENT_LABELS[id]}
+                <label htmlFor={`domain-${id}`} className="text-text">
+                  {DOMAIN_LABELS[id]}
                 </label>
               </li>
             ))}
@@ -239,7 +239,7 @@ export default function DocsSetupPage() {
               disabled={
                 generateDocs.isPending ||
                 !configuredProviders?.length ||
-                departments.length === 0
+                domains.length === 0
               }
             >
               {generateDocs.isPending

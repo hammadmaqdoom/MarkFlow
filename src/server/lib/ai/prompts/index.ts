@@ -1,13 +1,9 @@
 /**
- * Prompt templates per department and document.
- * Builds system + user prompts from concept_input and optional department_overrides.
+ * Prompt templates per domain and document.
+ * Builds system + user prompts from concept_input and optional domain_overrides.
  */
 
-import type { DepartmentId } from "@/server/lib/departments";
-import {
-  getDepartmentFolderName,
-  getDepartmentDocSlugs,
-} from "@/server/lib/departments";
+import type { DomainId } from "@/server/lib/domains";
 
 export interface ConceptInput {
   idea?: string;
@@ -18,8 +14,8 @@ export interface ConceptInput {
   [key: string]: unknown;
 }
 
-export interface DepartmentOverrides {
-  [departmentId: string]: string | undefined;
+export interface DomainOverrides {
+  [domainId: string]: string | undefined;
 }
 
 const CONCEPT_SUMMARY = (c: ConceptInput) =>
@@ -33,11 +29,11 @@ const CONCEPT_SUMMARY = (c: ConceptInput) =>
     .filter(Boolean)
     .join("\n");
 
-/** System prompt per department (role + style) */
-export function getSystemPrompt(departmentId: DepartmentId): string {
+/** System prompt per domain (role + style) */
+export function getSystemPrompt(domainId: DomainId): string {
   const base =
     "You are an expert documentation writer. Output only valid markdown. No preamble or explanation—just the document content.";
-  const roles: Record<DepartmentId, string> = {
+  const roles: Record<DomainId, string> = {
     compliance:
       "You specialize in compliance and regulatory documentation. Be precise and reference standards where relevant.",
     product:
@@ -49,19 +45,19 @@ export function getSystemPrompt(departmentId: DepartmentId): string {
     technical:
       "You specialize in system architecture, APIs, database design, and software requirements. Be precise and implementable.",
   };
-  return `${base} ${roles[departmentId]}`;
+  return `${base} ${roles[domainId]}`;
 }
 
 /** User prompt for a specific document: concept + doc instructions */
 export function getUserPrompt(
-  departmentId: DepartmentId,
+  domainId: DomainId,
   docSlug: string,
   conceptInput: ConceptInput,
-  departmentOverrides?: DepartmentOverrides
+  domainOverrides?: DomainOverrides
 ): string {
   const concept = CONCEPT_SUMMARY(conceptInput);
-  const override = departmentOverrides?.[departmentId];
-  const overrideBlock = override ? `\n**Additional context for this department:**\n${override}\n` : "";
+  const override = domainOverrides?.[domainId];
+  const overrideBlock = override ? `\n**Additional context for this domain:**\n${override}\n` : "";
 
   const docInstructions: Record<string, string> = {
     "compliance-overview.md": `Create a Compliance Overview document. Sections: Introduction, Relevant standards/regulations, Key compliance requirements, Risk areas, Checklist summary.`,

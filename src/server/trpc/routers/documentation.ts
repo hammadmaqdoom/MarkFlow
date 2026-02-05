@@ -4,7 +4,7 @@ import type { Context } from "../context";
 import { protectedProcedure, router } from "../trpc";
 import { runDocumentationOrchestrator } from "@/server/lib/ai/orchestrator";
 import { getConfiguredProviders } from "@/server/lib/ai";
-import { DEPARTMENT_IDS } from "@/server/lib/departments";
+import { DOMAIN_IDS } from "@/server/lib/domains";
 import { AI_PROVIDER_IDS } from "@/server/lib/ai/types";
 
 async function assertEditorProject(
@@ -40,29 +40,29 @@ export const documentationRouter = router({
       z.object({
         projectId: z.string().uuid(),
         provider: z.enum(AI_PROVIDER_IDS),
-        departments: z.array(z.enum(DEPARTMENT_IDS)).optional(),
+        domains: z.array(z.enum(DOMAIN_IDS)).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertEditorProject(ctx, input.projectId);
       const { data: spec } = await ctx.supabase
         .from("project_specs")
-        .select("concept_input, department_overrides")
+        .select("concept_input, domain_overrides")
         .eq("project_id", input.projectId)
         .maybeSingle();
       const conceptInput = (spec as { concept_input: unknown } | null)?.concept_input ?? {};
-      const departmentOverrides =
-        (spec as { department_overrides: unknown } | null)?.department_overrides ?? {};
-      const departments: ("compliance" | "product" | "design" | "marketing" | "technical")[] =
-        input.departments && input.departments.length > 0 ? [...input.departments] : [...DEPARTMENT_IDS];
+      const domainOverrides =
+        (spec as { domain_overrides: unknown } | null)?.domain_overrides ?? {};
+      const domains: ("compliance" | "product" | "design" | "marketing" | "technical")[] =
+        input.domains && input.domains.length > 0 ? [...input.domains] : [...DOMAIN_IDS];
       const results = await runDocumentationOrchestrator({
         supabase: ctx.supabase,
         projectId: input.projectId,
         userId: ctx.user.id,
         providerId: input.provider,
-        departments,
+        domains,
         conceptInput: conceptInput as Record<string, unknown>,
-        departmentOverrides: departmentOverrides as Record<string, string | undefined>,
+        domainOverrides: domainOverrides as Record<string, string | undefined>,
       });
       return { results };
     }),

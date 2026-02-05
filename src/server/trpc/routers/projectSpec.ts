@@ -40,7 +40,7 @@ const conceptInputSchema = z
   })
   .passthrough();
 
-const departmentOverridesSchema = z.record(z.string(), z.string().optional()).optional();
+const domainOverridesSchema = z.record(z.string(), z.string().optional()).optional();
 
 export const projectSpecRouter = router({
   get: protectedProcedure
@@ -49,14 +49,14 @@ export const projectSpecRouter = router({
       await assertEditorProject(ctx, input.projectId);
       const { data, error } = await ctx.supabase
         .from("project_specs")
-        .select("concept_input, department_overrides, updated_at")
+        .select("concept_input, domain_overrides, updated_at")
         .eq("project_id", input.projectId)
         .maybeSingle();
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
-      if (!data) return { conceptInput: {}, departmentOverrides: {}, updatedAt: null };
+      if (!data) return { conceptInput: {}, domainOverrides: {}, updatedAt: null };
       return {
         conceptInput: (data as { concept_input: unknown }).concept_input ?? {},
-        departmentOverrides: (data as { department_overrides: unknown }).department_overrides ?? {},
+        domainOverrides: (data as { domain_overrides: unknown }).domain_overrides ?? {},
         updatedAt: (data as { updated_at: string | null }).updated_at ?? null,
       };
     }),
@@ -66,7 +66,7 @@ export const projectSpecRouter = router({
       z.object({
         projectId: z.string().uuid(),
         conceptInput: conceptInputSchema,
-        departmentOverrides: departmentOverridesSchema,
+        domainOverrides: domainOverridesSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -77,17 +77,17 @@ export const projectSpecRouter = router({
           {
             project_id: input.projectId,
             concept_input: input.conceptInput,
-            department_overrides: input.departmentOverrides ?? {},
+            domain_overrides: input.domainOverrides ?? {},
             updated_at: new Date().toISOString(),
           },
           { onConflict: "project_id" }
         )
-        .select("concept_input, department_overrides, updated_at")
+        .select("concept_input, domain_overrides, updated_at")
         .single();
       if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error.message });
       return {
         conceptInput: (data as { concept_input: unknown }).concept_input ?? {},
-        departmentOverrides: (data as { department_overrides: unknown }).department_overrides ?? {},
+        domainOverrides: (data as { domain_overrides: unknown }).domain_overrides ?? {},
         updatedAt: (data as { updated_at: string }).updated_at,
       };
     }),

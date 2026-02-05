@@ -1,29 +1,29 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pathFromParentAndName, normalizePath } from "@/server/lib/path";
 import {
-  type DepartmentId,
-  DEPARTMENT_IDS,
-  getDepartmentFolderName,
-  getDepartmentDocSlugs,
-} from "@/server/lib/departments";
+  type DomainId,
+  DOMAIN_IDS,
+  getDomainFolderName,
+  getDomainDocSlugs,
+} from "@/server/lib/domains";
 import { getAiProvider, type AiProviderId } from "./index";
 import { getSystemPrompt, getUserPrompt } from "./prompts";
-import type { ConceptInput, DepartmentOverrides } from "./prompts";
+import type { ConceptInput, DomainOverrides } from "./prompts";
 
 export interface OrchestratorInput {
   supabase: SupabaseClient;
   projectId: string;
   userId: string;
   providerId: AiProviderId;
-  departments: DepartmentId[];
+  domains: DomainId[];
   conceptInput: ConceptInput;
-  departmentOverrides?: DepartmentOverrides;
+  domainOverrides?: DomainOverrides;
 }
 
 export interface GeneratedDocResult {
   documentId: string;
   path: string;
-  departmentId: DepartmentId;
+  domainId: DomainId;
   created: boolean;
 }
 
@@ -101,9 +101,9 @@ export async function runDocumentationOrchestrator(
     projectId,
     userId,
     providerId,
-    departments,
+    domains,
     conceptInput,
-    departmentOverrides,
+    domainOverrides,
   } = input;
 
   const provider = getAiProvider(providerId);
@@ -112,13 +112,13 @@ export async function runDocumentationOrchestrator(
   }
 
   const results: GeneratedDocResult[] = [];
-  const deptList = departments.length > 0 ? departments : [...DEPARTMENT_IDS];
+  const domainList = domains.length > 0 ? domains : [...DOMAIN_IDS];
 
-  for (const departmentId of deptList) {
-    const folderName = getDepartmentFolderName(departmentId);
+  for (const domainId of domainList) {
+    const folderName = getDomainFolderName(domainId);
     const folderPath = folderName;
     const { id: folderId } = await getOrCreateFolder(supabase, projectId, folderPath);
-    const docSlugs = getDepartmentDocSlugs(departmentId);
+    const docSlugs = getDomainDocSlugs(domainId);
 
     for (const docSlug of docSlugs) {
       const docPath = pathFromParentAndName(folderPath, docSlug);
@@ -129,12 +129,12 @@ export async function runDocumentationOrchestrator(
         .eq("path", docPath)
         .maybeSingle();
 
-      const systemPrompt = getSystemPrompt(departmentId);
+      const systemPrompt = getSystemPrompt(domainId);
       const userPrompt = getUserPrompt(
-        departmentId,
+        domainId,
         docSlug,
         conceptInput,
-        departmentOverrides
+        domainOverrides
       );
       const content = await provider.generate({ systemPrompt, userPrompt });
 
@@ -152,7 +152,7 @@ export async function runDocumentationOrchestrator(
         results.push({
           documentId: existingDoc.id,
           path: docPath,
-          departmentId,
+          domainId,
           created: false,
         });
       } else {
@@ -172,7 +172,7 @@ export async function runDocumentationOrchestrator(
         results.push({
           documentId: newDoc!.id,
           path: docPath,
-          departmentId,
+          domainId,
           created: true,
         });
       }
