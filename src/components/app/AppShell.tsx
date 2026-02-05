@@ -24,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: me } = trpc.user.me.useQuery();
   const profile = me?.profile;
   const authUser = me?.user;
+  const userEmail = authUser && "email" in authUser ? authUser.email : undefined;
   const updateProfile = trpc.user.updateProfile.useMutation({
     onSuccess: () => utils.user.me.invalidate(),
   });
@@ -92,7 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 />
               ) : (
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium text-white">
-                  {(profile?.full_name ?? authUser?.email ?? "?")[0]}
+                  {(profile?.full_name ?? userEmail ?? "?")[0]}
                 </span>
               )}
             </button>
@@ -108,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   role="menu"
                 >
                   <div className="border-b border-border px-3 py-2 text-sm text-text-muted">
-                    {profile?.full_name ?? authUser?.email}
+                    {profile?.full_name ?? userEmail}
                   </div>
                   <Link
                     href="/dashboard"
