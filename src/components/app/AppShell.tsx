@@ -118,6 +118,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   >
                     Profile
                   </Link>
+                  <Link
+                    href="/settings/api-keys"
+                    className="block px-3 py-2 text-sm text-text hover:bg-bg"
+                    role="menuitem"
+                    onClick={() => setUserMenuOpen(false)}
+                  >
+                    API keys
+                  </Link>
                   <div className="border-b border-border px-3 py-2">
                     <span className="text-xs font-medium text-text-muted uppercase tracking-wide">
                       Default editor

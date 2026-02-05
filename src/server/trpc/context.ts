@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { getClientIdentifier } from "@/server/lib/rate-limit";
+import { getUserIdFromApiKey } from "@/server/lib/api-key";
 
 function getCookiesFromRequest(req: Request): { name: string; value: string }[] {
   const cookieHeader = req.headers.get("cookie");
@@ -13,6 +14,33 @@ function getCookiesFromRequest(req: Request): { name: string; value: string }[] 
 
 export async function createContext(opts: FetchCreateContextFnOptions) {
   const clientId = getClientIdentifier(opts.req) ?? "unknown";
+
+  // MCP / API key auth: Bearer token in Authorization header
+  const authHeader = opts.req.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    if (token) {
+      const userId = await getUserIdFromApiKey(token);
+      if (userId) {
+        const supabase = createServerClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            cookies: {
+              getAll: () => [],
+              setAll: () => {},
+            },
+          }
+        );
+        return {
+          supabase,
+          user: { id: userId },
+          clientId,
+        };
+      }
+    }
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

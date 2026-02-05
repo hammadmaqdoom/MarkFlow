@@ -52,10 +52,53 @@ The Founder's Growth Engine — real-time collaborative documentation with dual-
    npm run start
    ```
 
+## MCP (Model Context Protocol)
+
+Markflow exposes an MCP server so AI assistants (Claude Desktop, Cursor, etc.) can read and write your documents.
+
+1. **Create an API key**  
+   In the app: open the user menu (avatar) → **API keys** → **Create API key**. Copy the key (it starts with `mf_` and is shown only once).
+
+2. **Use the remote MCP endpoint** (recommended when the app is on Vercel)  
+   Your deployed app serves MCP over HTTP at:
+
+   **`https://your-app.vercel.app/api/mcp`**
+
+   Configure your AI client to use this URL with your API key as a Bearer token. Example for Claude Desktop (`claude_desktop_config.json`) with **HTTP** transport:
+
+   ```json
+   {
+     "mcpServers": {
+       "markflow": {
+         "url": "https://your-app.vercel.app/api/mcp",
+         "headers": {
+           "Authorization": "Bearer mf_your_key_here"
+         }
+       }
+     }
+   }
+   ```
+
+   No local process or repo clone needed — the MCP server runs on Vercel.
+
+3. **Optional: local stdio server**  
+   If you prefer a local MCP process (e.g. for development), run:
+
+   ```bash
+   DOCMGMT_URL=https://your-app.com DOCMGMT_API_KEY=mf_xxx npm run mcp
+   ```
+
+   Then point your AI client at this process with **stdio** transport (command `npx`, args `["tsx", "scripts/mcp-server.ts"]`, `cwd` = repo root, same env vars).
+
+**Tools exposed:** `list_workspaces`, `list_projects`, `list_documents`, `read_document`, `read_document_by_path`, `write_document`, `create_document`.
+
+Run the **database migration** that adds the `api_keys` table before creating API keys: apply `supabase/migrations/20260205120000_api_keys.sql`.
+
 ## Scripts
 
 - `npm run dev` — start Next.js dev server
 - `npm run partykit:dev` — start PartyKit dev server (real-time doc sync)
+- `npm run mcp` — run MCP server (stdio; set `DOCMGMT_URL` and `DOCMGMT_API_KEY`)
 - `npm run build` — production build
 - `npm run start` — start production server
 - `npm run lint` — run ESLint

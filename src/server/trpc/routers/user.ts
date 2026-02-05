@@ -1,4 +1,6 @@
+import { randomBytes } from "crypto";
 import { z } from "zod";
+import { hashApiKey } from "@/server/lib/api-key";
 import { protectedProcedure, router } from "../trpc";
 
 const updateProfileSchema = z.object({
@@ -46,5 +48,42 @@ export const userRouter = router({
 
       if (error) throw new Error(error.message);
       return data;
+    }),
+
+  // API keys for MCP and programmatic access
+  createApiKey: protectedProcedure
+    .input(z.object({ name: z.string().min(1).max(100).default("MCP / API") }))
+    .mutation(async ({ ctx, input }) => {
+      const rawKey = `mf_${randomBytes(24).toString("hex")}`;
+      const keyHash = hashApiKey(rawKey);
+      const { data, error } = await ctx.supabase
+        .from("api_keys")
+        .insert({ user_id: ctx.user.id, key_hash: keyHash, name: input.name })
+        .select("id, name, created_at")
+        .single();
+      if (error) throw new Error(error.message);
+      return { ...data, key: rawKey };
+    }),
+
+  listApiKeys: protectedProcedure.query(async ({ ctx }) => {
+    const { data, error } = await ctx.supabase
+      .from("api_keys")
+      .select("id, name, created_at")
+      .eq("user_id", ctx.user.id)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }),
+
+  revokeApiKey: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("api_keys")
+        .delete()
+        .eq("id", input.id)
+        .eq("user_id", ctx.user.id);
+      if (error) throw new Error(error.message);
+      return { ok: true };
     }),
 });
